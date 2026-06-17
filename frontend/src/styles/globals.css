@@ -1,0 +1,109 @@
+:root {
+  --bg: #ffffff;
+  --surface: #f8f9fc;
+  --surface2: #f0f2f8;
+  --border: #e4e7f0;
+  --accent: #e8365d;
+  --accent2: #ff4d5a;
+  --accent-light: #fff0f3;
+  --green: #00a86b;
+  --green-light: #e8faf3;
+  --text: #0f1117;
+  --text2: #3a3d4a;
+  --muted: #8a8d9a;
+  --card: #ffffff;
+  --shadow: 0 2px 16px rgba(0,0,0,0.07);
+  --shadow-lg: 0 8px 40px rgba(0,0,0,0.1);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: linear-gradient(180deg, #ffffff 0%, #f8f9fc 100%);
+  color: var(--text);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+  overflow-x: hidden;
+}
+
+#root {
+  width: 100%;
+  min-height: 100vh;
+}
+
+/* Typography */
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Inter', sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+}
+
+h1 {
+  font-size: clamp(32px, 5vw, 64px);
+  line-height: 1.1;
+}
+
+h2 {
+  font-size: clamp(24px, 4vw, 42px);
+  line-height: 1.1;
+}
+
+h3 {
+  font-size: 18px;
+  letter-spacing: -0.4px;
+}
+
+/* Buttons */
+button {
+  font-family: 'Inter', sans-serif;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+/* Inputs */
+input,
+textarea {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 14px;
+}
+
+input:focus,
+textarea:focus {
+  outline: none;
+}
+
+/* Utilities */
+.gradient-text {
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.gradient-button {
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  color: white;
+  box-shadow: 0 4px 16px rgba(232, 54, 93, 0.3);
+}
+
+.gradient-button:hover {
+  opacity: 0.88;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 24px rgba(232, 54, 93, 0.35);
+}
+
+@media (max-width: 1024px) {
+  body {
+    font-size: 14px;
+  }
+}
