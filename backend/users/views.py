@@ -130,7 +130,11 @@ class UserViewSet(viewsets.ModelViewSet):
             
             try:
                 user = User.objects.get(email=email)
-                user = authenticate(username=user.username, password=password)
+                # USERNAME_FIELD is 'email' on CustomUser, so authenticate()
+                # looks up by the email column — not by the 'username' column.
+                # Passing user.username here returns None even with a correct
+                # password, which surfaces as a 401 "Invalid credentials".
+                user = authenticate(username=user.email, password=password)
                 
                 if user is None:
                     return Response(
