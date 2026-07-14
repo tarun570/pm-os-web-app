@@ -216,10 +216,11 @@ N8N_CALLBACK_URL = config('N8N_CALLBACK_URL', default='http://localhost:8000/api
 
 # n8n webhooks for Jira/Trello CSV exports. Each platform has its own
 # dedicated n8n workflow. The flow is: PM OS POSTs the sprint-plan sheet
-# link to one of these URLs, n8n fetches the (public) sheet, converts it
-# to the right CSV shape, and POSTs the bytes back to N8N_CSV_CALLBACK_URL.
-# The sheet is shared so anyone with the link can view it, so no Drive
-# access token is forwarded for the export flow.
+# link, the parsed sheet_id, and (best-effort) a fresh Google access
+# token to one of these URLs, n8n fetches the sheet, converts it to
+# the right CSV shape, and POSTs the bytes back to N8N_CSV_CALLBACK_URL.
+# The access_token is opportunistic — if the user has not connected
+# Drive, the export still proceeds against the shared public sheet.
 JIRA_N8N_WEBHOOK_URL = config('Jira_n8n_webhook_url', default='')
 TRELLO_N8N_WEBHOOK_URL = config('Trello_n8n_webhook_url', default='')
 N8N_CSV_CALLBACK_URL = config('N8N_CSV_CALLBACK_URL', default='http://localhost:8000/api/uploads/csv_callback/')

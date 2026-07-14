@@ -949,6 +949,22 @@ class FileUploadViewSet(viewsets.ModelViewSet):
             print(f"    sheet_link: {sheet_link}")
             print(f"    share_with: {share_with}")
 
+            # Best-effort: extract the bare Google Sheets ID from sheet_link
+            # so the Jira/Trello export webhooks can address the sheet
+            # directly without re-parsing the URL. A malformed legacy URL
+            # is logged and skipped — the export endpoint will re-parse on
+            # demand. We deliberately do not fail the callback over this.
+            sheet_id = None
+            if sheet_link:
+                try:
+                    from users.sheet_importer import extract_spreadsheet_id, SheetImportError
+                    sheet_id = extract_spreadsheet_id(sheet_link)
+                    print(f"    sheet_id: {sheet_id}")
+                except SheetImportError as exc:
+                    print(f"    ⚠️  Could not parse sheet_id from sheet_link: {exc}")
+                except Exception as exc:
+                    print(f"    ⚠️  sheet_id parse error: {type(exc).__name__}: {exc}")
+
             # Build processing_result from common keys or use provided field
             processing_result = payload.get('processing_result') or payload.get('results')
             print(f"\n[8] BUILDING PROCESSING_RESULT:")
@@ -994,6 +1010,8 @@ class FileUploadViewSet(viewsets.ModelViewSet):
                 file_upload.processing_result = processing_result
                 file_upload.prd_document = payload.get('prd_url') or payload.get('prd_document')
                 file_upload.project_plan = payload.get('project_plan')
+                if sheet_id:
+                    file_upload.sheet_id = sheet_id
                 print(f"    Calling mark_failed()...")
                 file_upload.mark_failed(msg)
                 print(f"    ✓ Status set to: failed")
@@ -1010,6 +1028,8 @@ class FileUploadViewSet(viewsets.ModelViewSet):
             file_upload.prd_document = payload.get('prd_url') or payload.get('prd_document')
             file_upload.project_plan = payload.get('project_plan')
             file_upload.drive_folder_url = payload.get('drive_folder_url') or payload.get('folder_url')
+            if sheet_id:
+                file_upload.sheet_id = sheet_id
             print(f"    Calling mark_completed()...")
             file_upload.mark_completed(processing_result)
             print(f"    ✓ Status set to: completed")
@@ -1022,7 +1042,11 @@ class FileUploadViewSet(viewsets.ModelViewSet):
             # /resync_sheet_plan/ or we re-run from a retry. We log and
             # move on.
             try:
-                from users.sheet_importer import populate_sprint_plan_from_sheet, SheetImportError
+                from users.sheet_importer import (
+                    populate_sprint_plan_from_sheet,
+                    extract_spreadsheet_id,
+                    SheetImportError,
+                )
                 counts = populate_sprint_plan_from_sheet(file_upload)
                 print(f"    ✓ Sprint plan imported: {counts}")
             except SheetImportError as exc:
@@ -1062,12 +1086,15 @@ class FileUploadViewSet(viewsets.ModelViewSet):
     # CSV export endpoints
     #
     # The user clicks "Export to Jira" / "Export to Trello" on a completed
-    # upload. We forward the public sprint-plan sheet link to a dedicated
-    # n8n webhook (JIRA_N8N_WEBHOOK_URL / TRELLO_N8N_WEBHOOK_URL) and mark
-    # the export as 'processing'. n8n fetches the sheet, builds the right
-    # CSV, and POSTs the bytes back to csv_callback. The frontend polls
-    # the upload row until the status flips to 'ready', then hits
-    # download_csv to get the file.
+    # upload. We POST the sheet link, the parsed sheet_id, and (best-effort)
+    # a fresh Google access token to a dedicated n8n webhook
+    # (JIRA_N8N_WEBHOOK_URL / TRELLO_N8N_WEBHOOK_URL) and mark the export
+    # as 'processing'. n8n fetches the sheet, builds the right CSV, and
+    # POSTs the bytes back to csv_callback. The frontend polls the upload
+    # row until the status flips to 'ready', then hits download_csv to
+    # get the file. The access_token is best-effort — if the user has not
+    # connected Drive, the export still proceeds against the shared
+    # public sheet.
     # ------------------------------------------------------------------
 
     def _trigger_csv_export(self, request, pk=None, csv_type='jira'):
@@ -1129,12 +1156,47 @@ class FileUploadViewSet(viewsets.ModelViewSet):
         setattr(file_upload, f'csv_{csv_type}_error', None)
         file_upload.save(update_fields=[status_field, f'csv_{csv_type}_error', 'updated_at'])
 
-        # 5. Fire-and-forget POST to n8n. n8n does all the heavy lifting
+        # 5. Best-effort: extract the bare Google Sheets ID. webhook_callback
+        # populates file_upload.sheet_id at the moment the sheet is created;
+        # older rows may not have it, so re-parse sheet_link as a fallback.
+        # A failure here is non-fatal — n8n can still fall back to the
+        # public-link path.
+        sheet_id = file_upload.sheet_id
+        if not sheet_id:
+            try:
+                from users.sheet_importer import extract_spreadsheet_id, SheetImportError
+                sheet_id = extract_spreadsheet_id(sheet_link)
+            except SheetImportError as exc:
+                print(f"[CSV EXPORT {csv_type.upper()}] upload={file_upload.id} "
+                      f"could not parse sheet_id from sheet_link: {exc}")
+            except Exception as exc:
+                print(f"[CSV EXPORT {csv_type.upper()}] upload={file_upload.id} "
+                      f"sheet_id parse error: {type(exc).__name__}: {exc}")
+
+        # 6. Best-effort: mint a fresh Google access token so n8n can read
+        # the sheet with the user's own Drive credentials. If the user has
+        # not connected Drive, or the token refresh fails, we proceed
+        # anyway — the sheet is still shared publicly as a fallback.
+        access_token = None
+        try:
+            access_token = google_drive.get_valid_access_token(file_upload.user)
+        except google_drive.GoogleDriveNotConnected:
+            # User hasn't connected Drive; fall through with access_token=None.
+            pass
+        except google_drive.GoogleDriveError as exc:
+            # Refresh failed; the user will see this in the n8n logs if
+            # the workflow later requires the token. Don't fail the export.
+            print(f"[CSV EXPORT {csv_type.upper()}] upload={file_upload.id} "
+                  f"token refresh failed for user {file_upload.user_id}: {exc}")
+
+        # 7. Fire-and-forget POST to n8n. n8n does all the heavy lifting
         # and returns the CSV via the csv_callback action below. We send
         # JSON (not multipart) because the payload is tiny.
         payload = {
             'upload_id': str(file_upload.id),
             'sheet_link': sheet_link,
+            'sheet_id': sheet_id,
+            'access_token': access_token,
             'callback_url': settings.N8N_CSV_CALLBACK_URL,
             'platform': csv_type,
         }
@@ -1155,16 +1217,57 @@ class FileUploadViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_502_BAD_GATEWAY,
             )
 
-        # 6. n8n acknowledged (any 2xx). n8n will do the work async and
-        # POST back to csv_callback. Return 202 with the serialized row
-        # so the frontend can read the new status.
+        # 8. n8n acknowledged and gave us a direct download link.
+        # Surface it to the frontend — the button will open it and the
+        # browser will download the file. No async callback, no polling.
         if 200 <= response.status_code < 300:
+            download_url = None
+            try:
+                n8n_body = response.json()
+                if isinstance(n8n_body, dict):
+                    download_url = n8n_body.get('download_url')
+            except (ValueError, json.JSONDecodeError):
+                # n8n returned non-JSON. Treat as no URL available.
+                pass
+
+            # Persist the URL on the row so repeat clicks can re-download
+            # the cached file without re-running n8n. Flip the status to
+            # 'ready' immediately — work is done from our side.
+            url_field = f'csv_{csv_type}_url'
+            setattr(file_upload, status_field, 'ready')
+            setattr(file_upload, url_field, download_url)
+            setattr(file_upload, f'csv_{csv_type}_error', None)
+            file_upload.save(update_fields=[
+                status_field, url_field, f'csv_{csv_type}_error', 'updated_at'
+            ])
+
+            # n8n said OK but didn't include a download_url. That's a
+            # failure of the n8n workflow's contract — surface it to the
+            # user instead of pretending success.
+            if not download_url:
+                err_msg = (
+                    f'n8n returned {response.status_code} without a '
+                    f'download_url in the body. Expected {{"success":true,'
+                    f'"download_url":"..."}}.'
+                )
+                setattr(file_upload, status_field, 'failed')
+                setattr(file_upload, f'csv_{csv_type}_error', err_msg)
+                file_upload.save(update_fields=[
+                    status_field, f'csv_{csv_type}_error', 'updated_at'
+                ])
+                return Response(
+                    {'error': err_msg, 'code': f'{csv_type}_webhook_no_url'},
+                    status=status.HTTP_502_BAD_GATEWAY,
+                )
+
             return Response(
                 {
-                    'message': f'{csv_type.capitalize()} export started',
+                    'message': f'{csv_type.capitalize()} export ready',
+                    'status': 'ready',
+                    'download_url': download_url,
                     'upload': FileUploadSerializer(file_upload).data,
                 },
-                status=status.HTTP_202_ACCEPTED,
+                status=status.HTTP_200_OK,
             )
 
         # n8n returned non-2xx. Treat as failure.

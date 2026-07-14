@@ -92,6 +92,7 @@ class FileUploadSerializer(serializers.ModelSerializer):
             'csv_jira_status', 'csv_trello_status',
             'csv_jira_file', 'csv_trello_file',
             'csv_jira_error', 'csv_trello_error',
+            'csv_jira_url', 'csv_trello_url',
             'uploaded_at', 'processing_started_at', 'completed_at',
             'original_file',
             'sow_text',
@@ -102,6 +103,7 @@ class FileUploadSerializer(serializers.ModelSerializer):
             'csv_jira_status', 'csv_trello_status',
             'csv_jira_file', 'csv_trello_file',
             'csv_jira_error', 'csv_trello_error',
+            'csv_jira_url', 'csv_trello_url',
             'uploaded_at', 'processing_started_at', 'completed_at',
             'sow_text',
         )

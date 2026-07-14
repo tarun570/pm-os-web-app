@@ -115,6 +115,21 @@ class FileUpload(models.Model):
     csv_trello_file = models.FileField(upload_to='csv_exports/trello/%Y/%m/%d/', null=True, blank=True)
     csv_jira_error = models.TextField(null=True, blank=True)
     csv_trello_error = models.TextField(null=True, blank=True)
+    # Direct download URL returned by n8n when the export completes.
+    # The browser opens this URL to download the CSV. We persist it so
+    # repeat clicks re-download the cached file without re-running n8n.
+    # Nullable so existing rows (and rows for which n8n never returned
+    # a URL) keep working. Stored on the row because the public Drive
+    # link can rotate, and we want the *current* URL on every read.
+    csv_jira_url = models.URLField(max_length=2048, null=True, blank=True)
+    csv_trello_url = models.URLField(max_length=2048, null=True, blank=True)
+
+    # Parsed Google Sheets ID, extracted from sheet_link at callback time.
+    # Forwarded to the Jira/Trello export webhooks so n8n can address the
+    # sheet directly without re-parsing the URL. Nullable so existing rows
+    # without this field keep working; older rows get the ID re-parsed on
+    # demand in _trigger_csv_export.
+    sheet_id = models.CharField(max_length=128, null=True, blank=True)
 
     # Timestamps
     uploaded_at = models.DateTimeField(auto_now_add=True)
