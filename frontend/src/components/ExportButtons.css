@@ -1,0 +1,8 @@
+/* Spin animation used by the ExportButtons inline-styled spinners.
+   Inline styles can't define @keyframes, so the spinner reads
+   animation: 'exportBtnSpin 0.9s linear infinite' and the keyframe
+   lives here, loaded once from ExportButtons.jsx's parent. */
+@keyframes exportBtnSpin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}

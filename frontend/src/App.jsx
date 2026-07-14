@@ -4,8 +4,11 @@ import { GoogleOAuthProvider } from '@react-oauth/google'
 import { AuthProvider } from './context/AuthContext'
 import Login from './pages/Login'
 import Register from './pages/Register'
-import Welcome from './pages/Welcome'
+import OverviewPage from './pages/OverviewPage'
+import ProjectsPage from './pages/ProjectsPage'
+import ProjectDetailPage from './pages/ProjectDetailPage'
 import ProtectedRoute from './components/ProtectedRoute'
+import AppLayout from './components/AppLayout/AppLayout'
 import './styles/globals.css'
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || 'your-google-client-id.apps.googleusercontent.com'
@@ -18,15 +21,26 @@ function App() {
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
+
+            {/* Authenticated shell — Sidebar + <Outlet /> + ChatPanel.
+                All post-login routes are nested under AppLayout. */}
             <Route
-              path="/welcome"
               element={
                 <ProtectedRoute>
-                  <Welcome />
+                  <AppLayout />
                 </ProtectedRoute>
               }
-            />
-            <Route path="/" element={<Navigate to="/welcome" />} />
+            >
+              <Route path="/overview" element={<OverviewPage />} />
+              <Route path="/projects" element={<ProjectsPage />} />
+              <Route path="/projects/:id" element={<ProjectDetailPage />} />
+
+              {/* /welcome is the legacy single-page route — redirect to /overview
+                  so old links, deep links from history, and bookmarks keep working. */}
+              <Route path="/welcome" element={<Navigate to="/overview" replace />} />
+            </Route>
+
+            <Route path="/" element={<Navigate to="/overview" replace />} />
           </Routes>
         </AuthProvider>
       </Router>

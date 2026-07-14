@@ -83,11 +83,19 @@ export const fileAPI = {
   webhookCallback: (data) =>
     api.post('/uploads/webhook_callback/', data),
 
-  // CSV export endpoints — async flow:
-  //   1. exportJira / exportTrello kicks off the export (returns 202)
-  //   2. n8n does the work and POSTs the CSV back to /csv_callback/
-  //   3. frontend polls getUpload until csv_*_status === 'ready'
-  //   4. downloadCsv fetches the file as a blob for the browser to save
+  // CSV export endpoints — sync flow:
+  //   1. exportJira / exportTrello calls n8n and returns 200 with
+  //      { download_url, status: 'ready' } inline.
+  //   2. The frontend opens download_url in a new tab; the browser
+  //      downloads the CSV from Drive.
+  //   3. The backend persists download_url on the FileUpload row
+  //      (csv_<type>_url), so a repeat click hits the cache in
+  //      useCsvExport and skips the n8n call.
+  //
+  // The previous async flow (export -> poll -> csv_callback ->
+  // download_csv) is no longer used by the UI. downloadCsv and
+  // cancelExport remain in the file because they may still be
+  // referenced by older code paths; they're harmless when unused.
   exportJira: (uploadId) =>
     api.post(`/uploads/${uploadId}/export_jira/`),
 
