@@ -1,0 +1,353 @@
+/* Floating launcher bubble — sits above page content, gradient matches the
+   existing .gradient-button style used across the app. */
+.bubble {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  color: white;
+  font-size: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 10px 30px rgba(232, 54, 93, 0.4);
+  cursor: pointer;
+  z-index: 1000;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  border: none;
+  padding: 0;
+  line-height: 1;
+}
+
+.bubble:hover {
+  transform: scale(1.06);
+  box-shadow: 0 14px 40px rgba(232, 54, 93, 0.5);
+}
+
+.bubble:active {
+  transform: scale(0.97);
+}
+
+/* Panel container — desktop default. */
+.panel {
+  position: fixed;
+  bottom: 100px;
+  right: 24px;
+  width: 380px;
+  max-width: calc(100vw - 32px);
+  height: 560px;
+  max-height: calc(100vh - 140px);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  z-index: 1000;
+  overflow: hidden;
+  animation: panelIn 0.22s ease-out;
+}
+
+@keyframes panelIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Header strip — gradient top border + title + close button. */
+.header {
+  position: relative;
+  padding: 16px 18px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+.header::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+}
+
+.headerTitle {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.headerTitle h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.2px;
+}
+
+.headerTitle span {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.closeBtn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  padding: 0;
+  line-height: 1;
+}
+
+.closeBtn:hover {
+  background: var(--surface2);
+  color: var(--text);
+}
+
+/* Message list — scrollable body. */
+.messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: var(--surface);
+  scroll-behavior: smooth;
+}
+
+.messages::-webkit-scrollbar {
+  width: 6px;
+}
+
+.messages::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+
+.message {
+  display: flex;
+  flex-direction: column;
+  max-width: 85%;
+  gap: 6px;
+}
+
+.userMessage {
+  align-self: flex-end;
+  align-items: flex-end;
+}
+
+.botMessage {
+  align-self: flex-start;
+  align-items: flex-start;
+}
+
+.bubble_user {
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  color: white;
+  padding: 10px 14px;
+  border-radius: 18px 18px 4px 18px;
+  font-size: 14px;
+  line-height: 1.5;
+  word-wrap: break-word;
+  white-space: pre-wrap;
+  box-shadow: 0 2px 8px rgba(232, 54, 93, 0.18);
+}
+
+.bubble_bot {
+  background: var(--card);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 10px 14px;
+  border-radius: 18px 18px 18px 4px;
+  font-size: 14px;
+  line-height: 1.55;
+  word-wrap: break-word;
+  white-space: pre-wrap;
+}
+
+/* Typing indicator (3 animated dots). */
+.typing {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 0;
+}
+
+.typingDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--muted);
+  animation: typingBounce 1.2s infinite ease-in-out;
+}
+
+.typingDot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typingDot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes typingBounce {
+  0%, 60%, 100% {
+    opacity: 0.35;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+
+/* Follow-up chips below a bot message. */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.chip {
+  background: white;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  border-radius: 100px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: 'Inter', sans-serif;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  line-height: 1.4;
+}
+
+.chip:hover {
+  background: var(--accent);
+  color: white;
+}
+
+.chip:active {
+  transform: scale(0.97);
+}
+
+/* Input row. */
+.inputRow {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 12px;
+  background: var(--card);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.input {
+  flex: 1;
+  resize: none;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 9px 12px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--text);
+  background: var(--surface);
+  min-height: 38px;
+  max-height: 120px;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: white;
+}
+
+.input::placeholder {
+  color: var(--muted);
+}
+
+.input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.sendBtn {
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  color: white;
+  border: none;
+  font-size: 16px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s, opacity 0.15s;
+  box-shadow: 0 4px 12px rgba(232, 54, 93, 0.3);
+  padding: 0;
+  line-height: 1;
+}
+
+.sendBtn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(232, 54, 93, 0.4);
+}
+
+.sendBtn:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.sendBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* Mobile: panel becomes a bottom sheet. */
+@media (max-width: 640px) {
+  .panel {
+    bottom: 0;
+    right: 0;
+    left: 0;
+    width: 100%;
+    max-width: 100vw;
+    height: 78vh;
+    max-height: 78vh;
+    border-radius: 16px 16px 0 0;
+  }
+
+  .bubble {
+    bottom: 16px;
+    right: 16px;
+    width: 56px;
+    height: 56px;
+  }
+}

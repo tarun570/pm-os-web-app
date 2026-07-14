@@ -1,0 +1,421 @@
+/* Section wrapper — sits on a soft gradient with mesh blobs for depth. */
+.section {
+  position: relative;
+  padding: 80px 60px;
+  max-width: 1200px;
+  margin: 0 auto 60px;
+  border-radius: 24px;
+  background:
+    radial-gradient(900px 500px at 10% 0%, rgba(232, 54, 93, 0.08), transparent 60%),
+    radial-gradient(700px 400px at 100% 30%, rgba(99, 102, 241, 0.08), transparent 60%),
+    linear-gradient(180deg, #ffffff 0%, #f8f9fc 100%);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+/* Decorative mesh blobs */
+.section::before,
+.section::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(60px);
+  opacity: 0.5;
+  pointer-events: none;
+  z-index: 0;
+}
+.section::before {
+  width: 320px;
+  height: 320px;
+  background: radial-gradient(circle, rgba(232, 54, 93, 0.18), transparent 70%);
+  top: -120px;
+  right: -80px;
+}
+.section::after {
+  width: 380px;
+  height: 380px;
+  background: radial-gradient(circle, rgba(99, 102, 241, 0.16), transparent 70%);
+  bottom: -160px;
+  left: -100px;
+}
+
+.section > * {
+  position: relative;
+  z-index: 1;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 40px;
+  flex-wrap: wrap;
+}
+
+.sectionHeader h2 {
+  margin-bottom: 8px;
+}
+
+.sectionHeader p {
+  font-size: 15px;
+  color: var(--text2);
+}
+
+.resetBtn {
+  padding: 10px 18px;
+  border-radius: 10px;
+  background: white;
+  border: 1.5px solid var(--border);
+  color: var(--text2);
+  font-size: 13px;
+  font-weight: 600;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.resetBtn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  transform: translateY(-1px);
+}
+
+/* Grid of project cards */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 24px;
+}
+
+/* Card */
+.card {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(8px);
+  border: 1.5px solid var(--border);
+  border-radius: 18px;
+  overflow: hidden;
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+}
+
+.card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 32px rgba(15, 17, 23, 0.08);
+  border-color: rgba(232, 54, 93, 0.25);
+}
+
+.cardExpanded {
+  box-shadow: 0 12px 36px rgba(15, 17, 23, 0.1);
+  border-color: rgba(232, 54, 93, 0.35);
+}
+
+/* Card header */
+.cardHeader {
+  padding: 24px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.cardHeader:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.cardHeaderTop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.cardTitleBlock {
+  min-width: 0;
+}
+
+.cardTitle {
+  font-size: 18px;
+  margin-bottom: 4px;
+  color: var(--text);
+  letter-spacing: -0.3px;
+}
+
+.cardOwner {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.cardSummary {
+  font-size: 13.5px;
+  color: var(--text2);
+  line-height: 1.6;
+  margin-bottom: 16px;
+}
+
+/* Status pill */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 12px;
+  border-radius: 100px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.pillDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.pillRunning {
+  background: rgba(0, 168, 107, 0.12);
+  color: #00875a;
+}
+.pillRunning .pillDot {
+  background: #00a86b;
+  animation: pulseDot 1.6s ease-in-out infinite;
+}
+
+.pillOnHold {
+  background: rgba(245, 158, 11, 0.14);
+  color: #b45309;
+}
+.pillOnHold .pillDot {
+  background: #f59e0b;
+}
+
+.pillComplete {
+  background: rgba(99, 102, 241, 0.14);
+  color: #4338ca;
+}
+.pillComplete .pillDot {
+  background: #6366f1;
+}
+
+@keyframes pulseDot {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(0, 168, 107, 0.5);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(0, 168, 107, 0);
+    transform: scale(1.1);
+  }
+}
+
+/* Meta row (timeline + duration) */
+.cardMeta {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 16px;
+  padding: 12px 14px;
+  background: var(--surface);
+  border-radius: 10px;
+  margin-bottom: 16px;
+}
+
+.metaItem {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.metaLabel {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.metaValue {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* Progress bar */
+.progressRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.progressTrack {
+  flex: 1;
+  height: 8px;
+  background: var(--surface2);
+  border-radius: 100px;
+  overflow: hidden;
+}
+
+.progressFill {
+  height: 100%;
+  border-radius: 100px;
+  transition: width 0.4s ease, background 0.3s ease;
+}
+
+.fill_running {
+  background: linear-gradient(90deg, #00a86b, #14d192);
+}
+.fill_on-hold {
+  background: linear-gradient(90deg, #f59e0b, #fbbf24);
+}
+.fill_complete {
+  background: linear-gradient(90deg, #6366f1, #818cf8);
+}
+
+.progressLabel {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text2);
+  min-width: 36px;
+  text-align: right;
+}
+
+.cardFooter {
+  border-top: 1px dashed var(--border);
+  padding-top: 12px;
+}
+
+.expandHint {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+/* Expanded body */
+.cardBody {
+  padding: 0 24px 24px;
+  border-top: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(248, 249, 252, 0.6), rgba(248, 249, 252, 0));
+  animation: bodyIn 0.3s ease;
+}
+
+@keyframes bodyIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.bodyGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 18px;
+  margin-bottom: 14px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fieldLabel {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.dateInput {
+  padding: 10px 12px;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  font-size: 14px;
+  color: var(--text);
+  background: white;
+  font-family: 'DM Sans', sans-serif;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.dateInput:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(232, 54, 93, 0.12);
+}
+
+.statusSelect {
+  padding: 10px 12px;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  background: white;
+  font-family: 'Inter', sans-serif;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.statusSelect:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(232, 54, 93, 0.12);
+  outline: none;
+}
+
+.select_running {
+  color: #00875a;
+}
+.select_on-hold {
+  color: #b45309;
+}
+.select_complete {
+  color: #4338ca;
+}
+
+.bodyNote {
+  font-size: 12px;
+  color: var(--muted);
+  font-style: italic;
+  margin-top: 4px;
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .section {
+    padding: 60px 24px;
+  }
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .section {
+    padding: 40px 16px;
+    border-radius: 18px;
+  }
+  .sectionHeader {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .cardHeader {
+    padding: 18px;
+  }
+  .cardBody {
+    padding: 0 18px 18px;
+  }
+  .bodyGrid {
+    grid-template-columns: 1fr;
+  }
+  .cardMeta {
+    grid-template-columns: 1fr;
+  }
+}

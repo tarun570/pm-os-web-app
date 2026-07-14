@@ -154,11 +154,11 @@ CORS_ALLOW_CREDENTIALS = True
 # means the cookie is host-only and may be scoped to the port that set it
 # in some browser configurations.
 SESSION_COOKIE_SAMESITE = 'Lax'
-SESSION_COOKIE_DOMAIN = 'localhost'
+# SESSION_COOKIE_DOMAIN = 'localhost'   # ← temporarily disabled to debug admin login
 SESSION_COOKIE_SECURE = False  # dev only — must be True in production (HTTPS)
 SESSION_COOKIE_HTTPONLY = True
 CSRF_COOKIE_SAMESITE = 'Lax'
-CSRF_COOKIE_DOMAIN = 'localhost'
+# CSRF_COOKIE_DOMAIN = 'localhost'      # ← temporarily disabled to debug admin login
 CSRF_COOKIE_SECURE = False  # dev only
 
 # REST Framework Configuration
@@ -213,3 +213,13 @@ N8N_WEBHOOK_URL = config('N8N_WEBHOOK_URL', default='http://localhost:5678/webho
 
 # n8n Callback URL (where n8n sends results back to this backend)
 N8N_CALLBACK_URL = config('N8N_CALLBACK_URL', default='http://localhost:8000/api/uploads/webhook_callback/')
+
+# n8n webhooks for Jira/Trello CSV exports. Each platform has its own
+# dedicated n8n workflow. The flow is: PM OS POSTs the sprint-plan sheet
+# link to one of these URLs, n8n fetches the (public) sheet, converts it
+# to the right CSV shape, and POSTs the bytes back to N8N_CSV_CALLBACK_URL.
+# The sheet is shared so anyone with the link can view it, so no Drive
+# access token is forwarded for the export flow.
+JIRA_N8N_WEBHOOK_URL = config('Jira_n8n_webhook_url', default='')
+TRELLO_N8N_WEBHOOK_URL = config('Trello_n8n_webhook_url', default='')
+N8N_CSV_CALLBACK_URL = config('N8N_CSV_CALLBACK_URL', default='http://localhost:8000/api/uploads/csv_callback/')

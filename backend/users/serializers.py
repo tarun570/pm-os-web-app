@@ -1,6 +1,9 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from users.models import EmailVerificationToken, GoogleOAuthToken, FileUpload
+from users.models import (
+    EmailVerificationToken, GoogleOAuthToken, FileUpload,
+    UserStory, Resource, SprintPlanRow,
+)
 import secrets
 from django.utils import timezone
 from datetime import timedelta
@@ -85,13 +88,22 @@ class FileUploadSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'file_name', 'file_size', 'file_type', 'status',
             'processing_result', 'prd_document', 'project_plan',
-            'error_message', 'uploaded_at', 'processing_started_at',
-            'completed_at', 'original_file'
+            'drive_folder_url', 'error_message',
+            'csv_jira_status', 'csv_trello_status',
+            'csv_jira_file', 'csv_trello_file',
+            'csv_jira_error', 'csv_trello_error',
+            'uploaded_at', 'processing_started_at', 'completed_at',
+            'original_file',
+            'sow_text',
         )
         read_only_fields = (
             'id', 'status', 'processing_result', 'prd_document',
-            'project_plan', 'error_message', 'uploaded_at',
-            'processing_started_at', 'completed_at'
+            'project_plan', 'drive_folder_url', 'error_message',
+            'csv_jira_status', 'csv_trello_status',
+            'csv_jira_file', 'csv_trello_file',
+            'csv_jira_error', 'csv_trello_error',
+            'uploaded_at', 'processing_started_at', 'completed_at',
+            'sow_text',
         )
 
 
@@ -111,3 +123,48 @@ class FileUploadCreateSerializer(serializers.ModelSerializer):
             status='pending'
         )
         return file_upload
+
+
+class UserStorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserStory
+        fields = (
+            'id', 'project_name', 'user_story',
+            'created_at', 'updated_at',
+        )
+        read_only_fields = ('id', 'created_at', 'updated_at')
+
+
+class ResourceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Resource
+        fields = (
+            'id', 'project_name', 'resource_type', 'resource_name',
+            'available_hours', 'sprint_duration',
+            'created_at', 'updated_at',
+        )
+        read_only_fields = ('id', 'created_at', 'updated_at')
+
+
+class SprintPlanRowSerializer(serializers.ModelSerializer):
+    # Read-only nested representations so the chatbot / UI can render a
+    # full sprint plan snapshot in one request without making N+1 queries
+    # to expand user_story / resources FKs on the frontend.
+    user_story_detail = UserStorySerializer(source='user_story', read_only=True)
+    resources_detail  = ResourceSerializer(source='resources', read_only=True)
+
+    class Meta:
+        model = SprintPlanRow
+        fields = (
+            'id', 'project_name',
+            'user_story', 'user_story_detail',
+            'us_id', 'task',
+            'resources', 'resources_detail', 'resource_name',
+            'start_date', 'end_date', 'est_hours',
+            'sprint', 'priority', 'status',
+            'created_at', 'updated_at',
+        )
+        read_only_fields = (
+            'id', 'user_story_detail', 'resources_detail',
+            'created_at', 'updated_at',
+        )

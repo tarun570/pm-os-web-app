@@ -2,6 +2,7 @@
 
 import React, { useState,useRef } from 'react'
 import { fileAPI } from '../api/auth'
+import { UploadCloud, FileText, AlertTriangle, X, Loader2 } from 'lucide-react'
 import styles from './FileUpload.module.css'
 
 export default function FileUpload({ onUploadSuccess }) {
@@ -177,7 +178,9 @@ export default function FileUpload({ onUploadSuccess }) {
         onClick={() => fileInputRef.current?.click()}
       >
         <div className={styles.content}>
-          <div className={styles.icon}>📄</div>
+          <div className={styles.icon}>
+            <UploadCloud size={40} strokeWidth={1.8} />
+          </div>
           <h3>Upload Your SOW</h3>
           <p>Drag and drop your file here or click to browse</p>
           <p className={styles.fileTypes}>Supported: PDF, DOCX, TXT (Max 100MB)</p>
@@ -214,13 +217,21 @@ export default function FileUpload({ onUploadSuccess }) {
             >
               Clear
             </button>
-            
+
             <button
               className={`${styles.uploadBtn} gradient-button`}
               onClick={handleUpload}
               disabled={isUploading}
             >
-              {isUploading ? '⏳ Uploading...' : '→ Upload & Process'}
+              {isUploading ? (
+                <>
+                  <Loader2 size={16} className={styles.spin} /> Uploading...
+                </>
+              ) : (
+                <>
+                  <FileText size={16} /> Upload & Process
+                </>
+              )}
             </button>
           </div>
         </div>
@@ -229,7 +240,7 @@ export default function FileUpload({ onUploadSuccess }) {
       {error && (
         <div className={styles.error}>
           <div className={styles.errorHeader}>
-            <span className={styles.errorIcon}>⚠️</span>
+            <AlertTriangle size={16} className={styles.errorIcon} />
             <strong>Upload failed</strong>
           </div>
           <div className={styles.errorBody}>{error}</div>

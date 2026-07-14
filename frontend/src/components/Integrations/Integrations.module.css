@@ -1,0 +1,293 @@
+/* Outer section — matches the Google Drive card spacing. */
+.section {
+  padding: 60px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+@media (max-width: 768px) {
+  .section {
+    padding: 24px 16px;
+  }
+}
+
+/* Header row — title + subtitle. */
+.header {
+  margin-bottom: 24px;
+}
+
+.header h2 {
+  font-size: clamp(24px, 4vw, 32px);
+  margin-bottom: 8px;
+  color: var(--text);
+}
+
+.header p {
+  font-size: 15px;
+  color: var(--text2);
+  line-height: 1.6;
+  max-width: 600px;
+}
+
+/* Two-column grid for the two integration cards. */
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+
+@media (max-width: 900px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Card shell — same look as the .userCard on the dashboard. */
+.card {
+  background: var(--card);
+  border: 1.5px solid var(--border);
+  border-radius: 16px;
+  padding: 28px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+/* Brand stripe at the top of each card — same idea as the chat panel header. */
+.card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+}
+
+.cardJira::before {
+  background: linear-gradient(90deg, #0052cc, #2684ff);
+}
+
+.cardTrello::before {
+  background: linear-gradient(90deg, #0079bf, #00aecc);
+}
+
+/* Header row inside each card — logo + title + status. */
+.cardHead {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.logo {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: 800;
+  font-size: 18px;
+  font-family: 'Inter', sans-serif;
+  flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.logoJira {
+  background: linear-gradient(135deg, #0052cc, #2684ff);
+}
+
+.logoTrello {
+  background: linear-gradient(135deg, #0079bf, #00aecc);
+}
+
+.cardTitle h3 {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0 0 2px;
+  letter-spacing: -0.3px;
+}
+
+.cardTitle span {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+/* Description paragraph. */
+.description {
+  font-size: 14px;
+  color: var(--text2);
+  line-height: 1.6;
+  margin: 0;
+}
+
+/* Status row — the checkmark / X circle + label, mirrors the Drive card. */
+.statusRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text);
+  padding: 12px 14px;
+  background: var(--surface);
+  border-radius: 10px;
+  border: 1px solid var(--border);
+}
+
+.statusIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  color: white;
+  font-size: 13px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.statusIconConnected {
+  background: #10b981;
+}
+
+.statusIconDisconnected {
+  background: #e5e7eb;
+  color: #6b7280;
+}
+
+.hint {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* Action buttons — connect (gradient) and disconnect (outline). */
+.actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.connectBtn {
+  padding: 11px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  border: none;
+  border-radius: 10px;
+  color: white;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: 'Inter', sans-serif;
+}
+
+.connectBtnJira {
+  background: linear-gradient(135deg, #0052cc, #2684ff);
+  box-shadow: 0 4px 14px rgba(0, 82, 204, 0.28);
+}
+
+.connectBtnTrello {
+  background: linear-gradient(135deg, #0079bf, #00aecc);
+  box-shadow: 0 4px 14px rgba(0, 121, 191, 0.28);
+}
+
+.connectBtn:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.connectBtnJira:hover:not(:disabled) {
+  box-shadow: 0 6px 20px rgba(0, 82, 204, 0.4);
+}
+
+.connectBtnTrello:hover:not(:disabled) {
+  box-shadow: 0 6px 20px rgba(0, 121, 191, 0.4);
+}
+
+.connectBtn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.connectBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.disconnectBtn {
+  padding: 9px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: white;
+  color: #6b7280;
+  cursor: pointer;
+  font-family: 'Inter', sans-serif;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.disconnectBtn:hover:not(:disabled) {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #dc2626;
+}
+
+.disconnectBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.spin {
+  animation: iSpin 0.8s linear infinite;
+}
+
+@keyframes iSpin {
+  to { transform: rotate(360deg); }
+}
+
+/* "Coming soon" feature list — shown while disconnected, lists what users will get. */
+.featureList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.featureItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text2);
+  line-height: 1.5;
+}
+
+.featureItem::before {
+  content: '✓';
+  color: var(--green);
+  font-weight: 700;
+  flex-shrink: 0;
+  margin-top: 1px;
+}

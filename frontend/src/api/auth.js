@@ -82,6 +82,29 @@ export const fileAPI = {
 
   webhookCallback: (data) =>
     api.post('/uploads/webhook_callback/', data),
+
+  // CSV export endpoints — async flow:
+  //   1. exportJira / exportTrello kicks off the export (returns 202)
+  //   2. n8n does the work and POSTs the CSV back to /csv_callback/
+  //   3. frontend polls getUpload until csv_*_status === 'ready'
+  //   4. downloadCsv fetches the file as a blob for the browser to save
+  exportJira: (uploadId) =>
+    api.post(`/uploads/${uploadId}/export_jira/`),
+
+  exportTrello: (uploadId) =>
+    api.post(`/uploads/${uploadId}/export_trello/`),
+
+  // `responseType: 'blob'` is critical — default JSON would mangle the
+  // CSV bytes. The auth interceptor still attaches the JWT.
+  downloadCsv: (uploadId, type) =>
+    api.get(`/uploads/${uploadId}/download_csv/?type=${type}`, { responseType: 'blob' }),
+
+  // Soft-cancel an in-flight export. The backend flips the row's
+  // csv_<type>_status to 'cancelled' and the callback endpoint ignores
+  // the late result when n8n eventually POSTs back. Query-param style
+  // matches downloadCsv above.
+  cancelExport: (uploadId, type) =>
+    api.post(`/uploads/${uploadId}/cancel_export/?type=${type}`),
 }
 
 export default api

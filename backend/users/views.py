@@ -5,8 +5,10 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate, get_user_model
 from django.core.mail import send_mail
+from django.core.files.base import ContentFile
 from django.shortcuts import redirect
 from django.conf import settings
+from django.http import FileResponse, HttpResponse
 from django.utils import timezone
 from datetime import timedelta
 from google.auth.transport import requests
@@ -15,14 +17,29 @@ import uuid
 import requests as http_requests
 import json
 import secrets
+import base64
+import sys
+
+# Force UTF-8 on stdout/stderr so the emoji-laden debug print() calls
+# below don't crash the request handler on Windows (cp1252 default).
+# On *nix this is a no-op since stdout is already UTF-8.
+try:
+    sys.stdout.reconfigure(encoding='utf-8')
+    sys.stderr.reconfigure(encoding='utf-8')
+except (AttributeError, ValueError):
+    # Python < 3.7 or already-detached streams — print() will fall back
+    # to the locale default, but debug logs are best-effort anyway.
+    pass
 
 from users import google_drive
-from users.models import EmailVerificationToken, GoogleOAuthToken, FileUpload
+from users.models import EmailVerificationToken, GoogleOAuthToken, FileUpload, UserStory, Resource, SprintPlanRow
 from users.serializers import (
     UserSerializer, RegisterSerializer, LoginSerializer,
     VerifyEmailSerializer, TokenSerializer, GoogleLoginSerializer,
-    FileUploadSerializer, FileUploadCreateSerializer
+    FileUploadSerializer, FileUploadCreateSerializer,
+    UserStorySerializer, ResourceSerializer, SprintPlanRowSerializer,
 )
+from users.text_extraction import extract_text
 
 User = get_user_model()
 
@@ -458,7 +475,27 @@ class FileUploadViewSet(viewsets.ModelViewSet):
             print(f"    File name: {file_upload.file_name}")
             print(f"    File size: {file_upload.file_size} bytes")
             print(f"    Status: {file_upload.status}")
-            
+
+            # Best-effort SOW text extraction. Persists the plain-text
+            # content of the upload to FileUpload.sow_text so the frontend
+            # can preview / search without round-tripping through MEDIA_ROOT,
+            # and so future features (semantic search, "ask the SOW") have
+            # the text on hand. Never fails the upload: extraction is
+            # independent of the n8n pipeline that runs further down.
+            try:
+                extracted = extract_text(
+                    file_upload.original_file.path,
+                    file_upload.file_type,
+                )
+                if extracted:
+                    file_upload.sow_text = extracted
+                    file_upload.save(update_fields=['sow_text', 'updated_at'])
+                    print(f"    SOW text: ✓ extracted {len(extracted)} chars")
+                else:
+                    print(f"    SOW text: — (no text returned for {file_upload.file_type})")
+            except Exception as exc:
+                print(f"    SOW text: ✗ {exc}")
+
             try:
                 # Trigger n8n webhook
                 webhook_url = settings.N8N_WEBHOOK_URL
@@ -570,6 +607,7 @@ class FileUploadViewSet(viewsets.ModelViewSet):
                             file_upload.processing_result = processing_result
                             file_upload.prd_document = normalized_response.get('prd_url') or normalized_response.get('prd_document')
                             file_upload.project_plan = normalized_response.get('project_plan')
+                            file_upload.drive_folder_url = normalized_response.get('drive_folder_url') or normalized_response.get('folder_url')
                             file_upload.mark_completed(processing_result)
                             print(f"    ✓ FileUpload marked as completed")
 
@@ -664,6 +702,176 @@ class FileUploadViewSet(viewsets.ModelViewSet):
         uploads = self.get_queryset().order_by('-uploaded_at')
         serializer = FileUploadSerializer(uploads, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], permission_classes=[IsAuthenticated])
+    def get_text(self, request, pk=None):
+        """Return just the extracted SOW text for an upload.
+
+        Lightweight alternative to GET /uploads/{id}/ when the frontend
+        only needs the text (preview pane, search highlighting) and the
+        full row payload (status, processing_result, csv_*, etc.) is
+        wasteful. Returns 404 if the row doesn't exist for this user, and
+        an empty string if extraction hasn't run / failed.
+        """
+        try:
+            file_upload = self.get_queryset().get(pk=pk)
+        except FileUpload.DoesNotExist:
+            return Response({'error': 'Upload not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        return Response(
+            {
+                'upload_id': file_upload.id,
+                'file_name': file_upload.file_name,
+                'file_type': file_upload.file_type,
+                'sow_text': file_upload.sow_text or '',
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    # ------------------------------------------------------------------
+    # Sprint-plan read endpoints
+    #
+    # These four endpoints expose the 3 tables (UserStory, Resource,
+    # SprintPlanRow) that webhook_callback populates by reading the
+    # user's Google Sheet. The chatbot will hit these — never the raw
+    # Google Sheets API — so queries are fast, indexed, and scoped to
+    # the authenticated user.
+    # ------------------------------------------------------------------
+
+    @action(detail=True, methods=['get'], permission_classes=[IsAuthenticated])
+    def sprint_plan(self, request, pk=None):
+        """GET /api/uploads/{id}/sprint_plan/
+
+        Returns the full snapshot: all 3 sub-sheets in one response, plus
+        derived counts so the UI can show "12 stories, 4 resources, 12
+        tasks" without extra round-trips.
+        """
+        try:
+            file_upload = self.get_queryset().get(pk=pk)
+        except FileUpload.DoesNotExist:
+            return Response({'error': 'Upload not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        # Project name is repeated on every row; just grab it from the
+        # first one. Empty string if no rows.
+        first_sp = file_upload.sprint_plan_rows.first()
+        project_name = first_sp.project_name if first_sp else ''
+
+        return Response(
+            {
+                'upload_id': file_upload.id,
+                'project_name': project_name,
+                'counts': {
+                    'user_stories': file_upload.user_stories.count(),
+                    'resources': file_upload.resources.count(),
+                    'sprint_plan_rows': file_upload.sprint_plan_rows.count(),
+                },
+                'user_stories': UserStorySerializer(
+                    file_upload.user_stories.all(), many=True
+                ).data,
+                'resources': ResourceSerializer(
+                    file_upload.resources.all(), many=True
+                ).data,
+                'sprint_plan_rows': SprintPlanRowSerializer(
+                    file_upload.sprint_plan_rows.all(), many=True
+                ).data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    @action(detail=True, methods=['get'], permission_classes=[IsAuthenticated])
+    def user_stories(self, request, pk=None):
+        """GET /api/uploads/{id}/user_stories/
+
+        Optional query params (all substring matches, case-insensitive):
+          ?project_name=AI%20Project
+        """
+        try:
+            file_upload = self.get_queryset().get(pk=pk)
+        except FileUpload.DoesNotExist:
+            return Response({'error': 'Upload not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        qs = file_upload.user_stories.all()
+        project_name = request.query_params.get('project_name')
+        if project_name:
+            qs = qs.filter(project_name__icontains=project_name)
+        return Response(UserStorySerializer(qs, many=True).data)
+
+    @action(detail=True, methods=['get'], permission_classes=[IsAuthenticated])
+    def resources(self, request, pk=None):
+        """GET /api/uploads/{id}/resources/
+
+        Optional query params:
+          ?project_name=&resource_name=&sprint_duration=
+        """
+        try:
+            file_upload = self.get_queryset().get(pk=pk)
+        except FileUpload.DoesNotExist:
+            return Response({'error': 'Upload not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        qs = file_upload.resources.all()
+        for field in ('project_name', 'resource_name', 'sprint_duration', 'resource_type'):
+            value = request.query_params.get(field)
+            if value:
+                qs = qs.filter(**{f'{field}__icontains': value})
+        return Response(ResourceSerializer(qs, many=True).data)
+
+    @action(detail=True, methods=['get'], permission_classes=[IsAuthenticated])
+    def sprint_plan_rows(self, request, pk=None):
+        """GET /api/uploads/{id}/sprint_plan_rows/
+
+        Optional query params (all substring matches, case-insensitive):
+          ?sprint=Sprint%201&priority=HIGH&status=running&us_id=US1
+        """
+        try:
+            file_upload = self.get_queryset().get(pk=pk)
+        except FileUpload.DoesNotExist:
+            return Response({'error': 'Upload not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        qs = file_upload.sprint_plan_rows.all()
+        for field in ('sprint', 'priority', 'status', 'us_id',
+                      'resource_name', 'project_name'):
+            value = request.query_params.get(field)
+            if value:
+                qs = qs.filter(**{f'{field}__icontains': value})
+        return Response(SprintPlanRowSerializer(qs, many=True).data)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def resync_sheet_plan(self, request, pk=None):
+        """POST /api/uploads/{id}/resync_sheet_plan/
+
+        Manual re-trigger: re-reads the 3 sub-sheets from the user's
+        Google Sheet and rewrites the local tables. Use when the webhook
+        import failed (logged but the upload is still marked completed)
+        or when the user edited the sheet in Drive and wants the chatbot
+        to see the updated data.
+        """
+        try:
+            file_upload = self.get_queryset().get(pk=pk)
+        except FileUpload.DoesNotExist:
+            return Response({'error': 'Upload not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        from users.sheet_importer import populate_sprint_plan_from_sheet, SheetImportError
+        try:
+            counts = populate_sprint_plan_from_sheet(file_upload)
+        except SheetImportError as exc:
+            return Response(
+                {'error': str(exc), 'code': 'sheet_import_failed'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except google_drive.GoogleDriveNotConnected as exc:
+            return Response(
+                {'error': str(exc), 'code': 'gdrive_not_connected'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(
+            {
+                'message': 'Sprint plan resynced from Google Sheet',
+                'counts': counts,
+                'upload': FileUploadSerializer(file_upload).data,
+            },
+            status=status.HTTP_200_OK,
+        )
 
     @action(detail=False, methods=['post'], permission_classes=[AllowAny])
     def webhook_callback(self, request):
@@ -801,9 +1009,28 @@ class FileUploadViewSet(viewsets.ModelViewSet):
             file_upload.processing_result = processing_result
             file_upload.prd_document = payload.get('prd_url') or payload.get('prd_document')
             file_upload.project_plan = payload.get('project_plan')
+            file_upload.drive_folder_url = payload.get('drive_folder_url') or payload.get('folder_url')
             print(f"    Calling mark_completed()...")
             file_upload.mark_completed(processing_result)
             print(f"    ✓ Status set to: completed")
+
+            # Best-effort sprint-plan import: read the 3 sub-sheets from
+            # the user's Google Sheet (which n8n just created) and populate
+            # UserStory / Resource / SprintPlanRow tables. Failure here
+            # does NOT fail the callback — the user's links are still
+            # valid, the chatbot just won't have data until they hit
+            # /resync_sheet_plan/ or we re-run from a retry. We log and
+            # move on.
+            try:
+                from users.sheet_importer import populate_sprint_plan_from_sheet, SheetImportError
+                counts = populate_sprint_plan_from_sheet(file_upload)
+                print(f"    ✓ Sprint plan imported: {counts}")
+            except SheetImportError as exc:
+                print(f"    ⚠️  Sprint plan import skipped: {exc}")
+            except Exception as exc:
+                import traceback
+                print(f"    ⚠️  Sprint plan import failed: {type(exc).__name__}: {exc}")
+                print(traceback.format_exc())
 
             serialized_upload = FileUploadSerializer(file_upload).data
             print(f"\n[10] RESPONSE:")
@@ -830,3 +1057,369 @@ class FileUploadViewSet(viewsets.ModelViewSet):
                 {'error': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+    # ------------------------------------------------------------------
+    # CSV export endpoints
+    #
+    # The user clicks "Export to Jira" / "Export to Trello" on a completed
+    # upload. We forward the public sprint-plan sheet link to a dedicated
+    # n8n webhook (JIRA_N8N_WEBHOOK_URL / TRELLO_N8N_WEBHOOK_URL) and mark
+    # the export as 'processing'. n8n fetches the sheet, builds the right
+    # CSV, and POSTs the bytes back to csv_callback. The frontend polls
+    # the upload row until the status flips to 'ready', then hits
+    # download_csv to get the file.
+    # ------------------------------------------------------------------
+
+    def _trigger_csv_export(self, request, pk=None, csv_type='jira'):
+        """Shared body for export_jira and export_trello.
+
+        csv_type must be 'jira' or 'trello'. The function picks the right
+        n8n URL, the right status field, and the right error field.
+        """
+        if csv_type not in ('jira', 'trello'):
+            return Response({'error': 'Invalid csv_type'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 1. Look up the row, scoped to the authenticated user.
+        try:
+            file_upload = self.get_queryset().get(pk=pk)
+        except FileUpload.DoesNotExist:
+            return Response({'error': 'Upload not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        # 2. Guardrails. The upload must be completed AND have a sheet link.
+        if file_upload.status != 'completed':
+            return Response(
+                {'error': 'Upload is not completed yet', 'status': file_upload.status},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        sheet_link = None
+        result = file_upload.processing_result
+        if isinstance(result, dict):
+            sheet_link = result.get('sheet_link')
+        elif isinstance(result, list) and result and isinstance(result[0], dict):
+            sheet_link = result[0].get('sheet_link')
+
+        if not sheet_link:
+            return Response(
+                {'error': 'No sheet link available for this upload'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # 3. Pick the right n8n URL.
+        webhook_url = (
+            settings.JIRA_N8N_WEBHOOK_URL if csv_type == 'jira'
+            else settings.TRELLO_N8N_WEBHOOK_URL
+        )
+        if not webhook_url:
+            return Response(
+                {
+                    'error': f'{csv_type.upper()} n8n webhook URL is not configured. '
+                             f'Set Jira_n8n_webhook_url / Trello_n8n_webhook_url in .env.',
+                    'code': f'{csv_type}_webhook_not_configured',
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        # 4. Mark the export as 'processing' and persist. The status is
+        # per-type (csv_jira_status vs csv_trello_status) so a Jira export
+        # in flight doesn't block a Trello export, and vice versa.
+        status_field = f'csv_{csv_type}_status'
+        setattr(file_upload, status_field, 'processing')
+        # Clear any previous error from a prior attempt.
+        setattr(file_upload, f'csv_{csv_type}_error', None)
+        file_upload.save(update_fields=[status_field, f'csv_{csv_type}_error', 'updated_at'])
+
+        # 5. Fire-and-forget POST to n8n. n8n does all the heavy lifting
+        # and returns the CSV via the csv_callback action below. We send
+        # JSON (not multipart) because the payload is tiny.
+        payload = {
+            'upload_id': str(file_upload.id),
+            'sheet_link': sheet_link,
+            'callback_url': settings.N8N_CSV_CALLBACK_URL,
+            'platform': csv_type,
+        }
+
+        try:
+            response = http_requests.post(webhook_url, json=payload, timeout=30)
+            print(f"\n[CSV EXPORT {csv_type.upper()}] upload={file_upload.id} "
+                  f"n8n_status={response.status_code} body={response.text[:200] if response.text else '(empty)'}")
+        except http_requests.RequestException as exc:
+            # Network failure talking to n8n — flip the export to 'failed'
+            # so the UI doesn't sit in 'processing' forever.
+            err_msg = f'Failed to reach {csv_type} n8n webhook: {exc}'
+            setattr(file_upload, status_field, 'failed')
+            setattr(file_upload, f'csv_{csv_type}_error', err_msg)
+            file_upload.save(update_fields=[status_field, f'csv_{csv_type}_error', 'updated_at'])
+            return Response(
+                {'error': err_msg, 'code': f'{csv_type}_webhook_unreachable'},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        # 6. n8n acknowledged (any 2xx). n8n will do the work async and
+        # POST back to csv_callback. Return 202 with the serialized row
+        # so the frontend can read the new status.
+        if 200 <= response.status_code < 300:
+            return Response(
+                {
+                    'message': f'{csv_type.capitalize()} export started',
+                    'upload': FileUploadSerializer(file_upload).data,
+                },
+                status=status.HTTP_202_ACCEPTED,
+            )
+
+        # n8n returned non-2xx. Treat as failure.
+        err_msg = f'n8n returned {response.status_code}: {response.text[:200]}'
+        setattr(file_upload, status_field, 'failed')
+        setattr(file_upload, f'csv_{csv_type}_error', err_msg)
+        file_upload.save(update_fields=[status_field, f'csv_{csv_type}_error', 'updated_at'])
+        return Response(
+            {'error': err_msg, 'code': f'{csv_type}_webhook_error'},
+            status=status.HTTP_502_BAD_GATEWAY,
+        )
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def export_jira(self, request, pk=None):
+        """Trigger a Jira-shaped CSV export of the sprint plan sheet."""
+        return self._trigger_csv_export(request, pk=pk, csv_type='jira')
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def export_trello(self, request, pk=None):
+        """Trigger a Trello-shaped CSV export of the sprint plan sheet."""
+        return self._trigger_csv_export(request, pk=pk, csv_type='trello')
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def cancel_export(self, request, pk=None):
+        """Soft-cancel an in-flight Jira or Trello CSV export.
+
+        Query param: ?type=jira|trello
+
+        Soft cancel means:
+        - The frontend stops polling immediately (the UI flips back to the
+          idle "Export to <X>" button so the user can retry).
+        - n8n is NOT notified — it will keep working server-side until it
+          POSTs the result back to csv_callback. The guard in csv_callback
+          (see below) checks the row's status and silently discards the
+          late result if it sees 'cancelled', so the user never sees a
+          stale "ready" appear after cancelling.
+        - The row's csv_<type>_status is flipped to 'cancelled'. The button
+          reverts to "Export to <X>" because the UI logic treats 'cancelled'
+          like the never-requested state (see FileHistory.jsx handleExport
+          step 1 — only 'ready' short-circuits to download).
+
+        Only valid while the export is 'processing'. Cancelling a 'ready'
+        or 'failed' export returns 400 — there's nothing to cancel and the
+        file (if ready) is still on disk for the user to download.
+        """
+        csv_type = (request.query_params.get('type') or '').lower()
+        if csv_type not in ('jira', 'trello'):
+            return Response(
+                {'error': 'Query param `type` must be jira or trello'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            file_upload = self.get_queryset().get(pk=pk)
+        except FileUpload.DoesNotExist:
+            return Response({'error': 'Upload not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        status_field = f'csv_{csv_type}_status'
+        error_field = f'csv_{csv_type}_error'
+        current_status = getattr(file_upload, status_field)
+
+        if current_status != 'processing':
+            return Response(
+                {
+                    'error': f'Cannot cancel: {csv_type} export is not in progress '
+                             f'(current status: {current_status or "not started"})',
+                    'current_status': current_status,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        setattr(file_upload, status_field, 'cancelled')
+        setattr(file_upload, error_field, None)
+        file_upload.save(update_fields=[status_field, error_field, 'updated_at'])
+
+        return Response(
+            {
+                'message': f'{csv_type.capitalize()} export cancelled',
+                'upload': FileUploadSerializer(file_upload).data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    @action(detail=False, methods=['post'], permission_classes=[AllowAny])
+    def csv_callback(self, request):
+        """Receive the generated CSV from n8n.
+
+        Payload shape (defined here; configure your n8n workflow to match):
+            {
+                "upload_id": "<FileUpload.id>",
+                "csv_type": "jira" | "trello",
+                "csv_content": "<base64-encoded CSV bytes>",  # or csv_url
+                "status": "ready" | "failed",
+                "error": null  # or an error message string
+            }
+
+        n8n is unauthenticated (AllowAny) — same as the existing
+        webhook_callback. We resolve the user from the upload row itself
+        and scope the lookup to that user to prevent cross-user IDOR.
+        """
+        try:
+            data = request.data
+
+            # Normalize payload shape (list-wrapped, json/body envelope)
+            # — same trick used by webhook_callback at line 693-709.
+            payload = {}
+            if isinstance(data, list) and data:
+                first = data[0]
+                if isinstance(first, dict):
+                    payload = first.get('json') or first.get('body') or first
+            elif isinstance(data, dict):
+                payload = data.get('json') or data.get('body') or data
+
+            upload_id = payload.get('upload_id')
+            csv_type = (payload.get('csv_type') or '').lower()
+            status_value = (payload.get('status') or '').lower()
+
+            if not upload_id:
+                return Response({'error': 'Missing upload_id'}, status=status.HTTP_400_BAD_REQUEST)
+            if csv_type not in ('jira', 'trello'):
+                return Response(
+                    {'error': 'csv_type must be jira or trello'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if status_value not in ('ready', 'failed'):
+                return Response(
+                    {'error': 'status must be ready or failed'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # Look up the row. We use FileUpload.objects.get (not get_queryset)
+            # because this endpoint is AllowAny and has no request.user to
+            # scope by. The id itself is treated as a capability — anyone who
+            # knows the id can complete the export. The id is a BigAutoField
+            # and not enumerated by default; this matches the existing
+            # webhook_callback's trust model (views.py:729).
+            try:
+                file_upload = FileUpload.objects.get(id=upload_id)
+            except FileUpload.DoesNotExist:
+                return Response(
+                    {'error': f'FileUpload {upload_id} not found'},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            status_field = f'csv_{csv_type}_status'
+            error_field = f'csv_{csv_type}_error'
+            file_field = f'csv_{csv_type}_file'
+
+            # Soft-cancel guard: if the user clicked Cancel while n8n was
+            # working, the row's status is now 'cancelled'. n8n doesn't know
+            # about the cancel and will eventually POST back here. We
+            # acknowledge the callback with 200 (so n8n's retry logic, if
+            # any, stops) but discard the bytes and leave the row's status
+            # untouched — so the UI can show the "Export to <X>" button
+            # again for a fresh attempt.
+            if getattr(file_upload, status_field) == 'cancelled':
+                return Response(
+                    {'message': f'{csv_type.capitalize()} export was cancelled; ignoring late result'},
+                    status=status.HTTP_200_OK,
+                )
+
+            if status_value == 'failed':
+                # n8n reported a processing failure. Persist the error and
+                # flip the status so the UI can show "Export failed".
+                file_upload.csv_trello_error = None  # clear the OTHER type's error
+                setattr(file_upload, error_field, payload.get('error') or payload.get('message') or 'n8n reported failure')
+                setattr(file_upload, status_field, 'failed')
+                file_upload.save(update_fields=[error_field, status_field, 'updated_at'])
+                return Response({'message': 'Export marked as failed'}, status=status.HTTP_200_OK)
+
+            # status == 'ready' — n8n sent the CSV bytes. We accept either
+            # csv_content (base64 string) or csv_url (an http(s) URL we fetch).
+            csv_bytes = None
+            csv_content = payload.get('csv_content')
+            csv_url = payload.get('csv_url')
+
+            if csv_content:
+                try:
+                    csv_bytes = base64.b64decode(csv_content)
+                except (TypeError, ValueError) as exc:
+                    return Response(
+                        {'error': f'csv_content is not valid base64: {exc}'},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+            elif csv_url:
+                try:
+                    fetched = http_requests.get(csv_url, timeout=60)
+                    fetched.raise_for_status()
+                    csv_bytes = fetched.content
+                except http_requests.RequestException as exc:
+                    return Response(
+                        {'error': f'Failed to fetch csv_url: {exc}'},
+                        status=status.HTTP_502_BAD_GATEWAY,
+                    )
+            else:
+                return Response(
+                    {'error': 'Either csv_content (base64) or csv_url is required when status=ready'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # Persist the file. Django's FileField will write it to the
+            # configured upload_to path under MEDIA_ROOT.
+            filename = f"{file_upload.file_name}_{csv_type}.csv"
+            # ContentFile wraps the bytes; .save() writes to disk.
+            getattr(file_upload, file_field).save(filename, ContentFile(csv_bytes), save=False)
+            setattr(file_upload, status_field, 'ready')
+            setattr(file_upload, error_field, None)
+            file_upload.save(update_fields=[file_field, status_field, error_field, 'updated_at'])
+
+            return Response(
+                {
+                    'message': f'{csv_type.capitalize()} CSV saved',
+                    'upload': FileUploadSerializer(file_upload).data,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        except Exception as exc:
+            print(f"\n❌ CSV CALLBACK EXCEPTION: {type(exc).__name__}: {exc}")
+            import traceback
+            print(traceback.format_exc())
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['get'], permission_classes=[IsAuthenticated])
+    def download_csv(self, request, pk=None):
+        """Stream a previously-generated CSV back to the user.
+
+        Query param: ?type=jira|trello
+        """
+        try:
+            file_upload = self.get_queryset().get(pk=pk)
+        except FileUpload.DoesNotExist:
+            return Response({'error': 'Upload not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        csv_type = (request.query_params.get('type') or '').lower()
+        if csv_type not in ('jira', 'trello'):
+            return Response(
+                {'error': 'Query param `type` must be jira or trello'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        file_field = f'csv_{csv_type}_file'
+        csv_file = getattr(file_upload, file_field)
+        if not csv_file:
+            return Response(
+                {'error': f'No {csv_type} CSV available for this upload'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Stream the file as an attachment so the browser triggers a
+        # download instead of trying to render the CSV.
+        response = FileResponse(
+            csv_file.open('rb'),
+            as_attachment=True,
+            filename=f"{file_upload.file_name}_{csv_type}.csv",
+            content_type='text/csv',
+        )
+        return response

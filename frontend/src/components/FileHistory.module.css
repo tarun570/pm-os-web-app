@@ -28,6 +28,9 @@
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .refreshBtn:hover:not(:disabled) {
@@ -48,7 +51,14 @@
 }
 
 .emptyIcon {
-  font-size: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 88px;
+  height: 88px;
+  border-radius: 22px;
+  background: var(--surface);
+  color: var(--muted);
   margin-bottom: 16px;
 }
 
@@ -121,7 +131,14 @@
 }
 
 .fileIcon {
-  font-size: 32px;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
 }
 
@@ -153,6 +170,17 @@
   font-weight: 600;
   white-space: nowrap;
   margin-left: 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.spin {
+  animation: fhSpin 0.9s linear infinite;
+}
+
+@keyframes fhSpin {
+  to { transform: rotate(360deg); }
 }
 
 .fileDetails {
@@ -197,23 +225,82 @@
   font-weight: 600;
 }
 
-.resultBtn {
-  display: inline-block;
-  padding: 8px 16px;
-  margin-bottom: 12px;
-  background: linear-gradient(135deg, #e8365d, #ff4d5a);
-  color: white;
-  border: none;
+.folderButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* CSV export buttons. Sit just below the primary "Open in Google Drive"
+   button. Same #e8365d pink accent as .refreshBtn (line 22) so the
+   palette stays consistent across the dashboard. */
+.exportRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.exportBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: 1px solid #e8365d;
   border-radius: 6px;
+  background: white;
+  color: #e8365d;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
 }
 
-.resultBtn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(232, 54, 93, 0.3);
+.exportBtn:hover:not(:disabled) {
+  background: #fff0f3;
+}
+
+.exportBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.exportBtnError {
+  /* Variant for the "Export failed — retry" state. Inherits layout from
+     .exportBtn; only color/background change. */
+  border-color: #ef4444;
+  color: #ef4444;
+}
+
+.exportBtnError:hover:not(:disabled) {
+  background: #fef2f2;
+}
+
+.exportBtnCancel {
+  /* Variant for the Cancel button shown next to an in-flight export.
+     Visually secondary so the user reads it as a stop/abort action,
+     not another primary export. Same #6b7280 grey as the "Unknown"
+     status badge in getStatusBadge for palette consistency. */
+  border-color: #6b7280;
+  color: #6b7280;
+}
+
+.exportBtnCancel:hover:not(:disabled) {
+  background: #f3f4f6;
+}
+
+.exportHint {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: #8a8d9a;
+  font-style: italic;
+}
+
+.exportError {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: #ef4444;
+  font-weight: 500;
 }
 
 .planPreview {
