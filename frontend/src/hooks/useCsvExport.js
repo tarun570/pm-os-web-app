@@ -47,20 +47,23 @@ export default function useCsvExport(uploadId, upload, onUpdated) {
   }, [uploadId])
 
   // Open a URL in the browser. Hidden <a download> is preferred so the
-  // file just lands in the user's Downloads folder with no new tab. If
-  // that path is blocked (some pop-up blockers), fall back to
-  // window.open. We don't actually need the fallback for `download`
-  // attribute triggers, but having both options covers edge cases where
-  // the server serves a Content-Disposition the browser won't honor
-  // automatically.
+  // file lands in the user's Downloads folder with no new tab and no
+  // navigation. The `download` attribute is what makes the browser
+  // treat this as a download rather than a navigation — the URL is
+  // followed silently and the file is saved.
+  //
+  // Note: we deliberately do NOT set `target="_blank"`. The user wants
+  // the export to happen on the same page (no new tab). If some
+  // pop-up blocker interferes, the click event still fires and most
+  // browsers will honor the `download` attribute.
   const openUrl = (url) => {
     const a = document.createElement('a')
     a.href = url
     a.rel = 'noopener noreferrer'
-    // `download` is left unset so the server's Content-Disposition
-    // (or the URL's filename) is used. For Drive download URLs the
-    // filename is taken from the id parameter.
-    a.target = '_blank'
+    // `download` (no value) tells the browser to save the response
+    // body as a file using the URL's filename. The server's
+    // Content-Disposition header is also respected if present.
+    a.download = ''
     document.body.appendChild(a)
     a.click()
     a.remove()

@@ -53,7 +53,7 @@ class EmailOrUsernameAuthenticationForm(AdminAuthenticationForm):
 
 class CustomUserAdmin(UserAdmin):
     model = CustomUser
-    list_display = ('email', 'username', 'is_verified', 'google_id', 'created_at')
+    list_display = ("id",'email', 'username', 'is_verified', 'google_id', 'created_at')
     list_filter = ('is_verified', 'created_at')
     fieldsets = UserAdmin.fieldsets + (
         ('Custom Fields', {'fields': ('is_verified', 'email_verified_at', 'last_login_at', 'google_id')}),

@@ -80,6 +80,15 @@ export const fileAPI = {
   getUpload: (uploadId) =>
     api.get(`/uploads/${uploadId}/`),
 
+  // DELETE /uploads/{id}/ comes from the default ModelViewSet routing
+  // on the backend. FileUploadViewSet.get_queryset() is scoped to the
+  // authenticated user, so a user can only delete their own rows. The
+  // ProjectsPage "Delete" button on each project card calls this — when
+  // the request returns 204, the row is gone from the database and stays
+  // gone after a page refresh.
+  deleteUpload: (uploadId) =>
+    api.delete(`/uploads/${uploadId}/`),
+
   webhookCallback: (data) =>
     api.post('/uploads/webhook_callback/', data),
 

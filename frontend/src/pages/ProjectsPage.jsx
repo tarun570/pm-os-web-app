@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { fileAPI } from '../api/auth'
 import useCsvExport from '../hooks/useCsvExport'
@@ -21,8 +20,8 @@ import {
   FolderOpen,
   ExternalLink,
   Sheet,
-  PencilLine,
   AlertCircle,
+  Trash2,
 } from 'lucide-react'
 import styles from './ProjectsPage.module.css'
 
@@ -66,11 +65,14 @@ function formatFileSize(bytes) {
 
 export default function ProjectsPage() {
   const { user } = useAuth()
-  const navigate = useNavigate()
   const [uploads, setUploads] = useState([])
   const [loading, setLoading] = useState(true)
   const [showUploadModal, setShowUploadModal] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  // Per-upload delete-in-flight flag — disables the Delete button while
+  // the DELETE request is in flight so a double-click can't fire two
+  // requests. Keyed by upload id.
+  const [deletingIds, setDeletingIds] = useState(() => new Set())
 
   // Tracks per-upload poll loops. Cleared on unmount.
   const pollersRef = useRef({})   // { [uploadId]: { active, timer } }
@@ -188,11 +190,77 @@ export default function ProjectsPage() {
     // "Upload started" state. They can dismiss it themselves.
   }
 
-  const handleCardClick = (e, id) => {
-    // Let inner links/buttons handle their own clicks; only the card body
-    // navigates.
-    if (e.target.closest('a, button')) return
-    navigate(`/projects/${id}`)
+  // Delete a project from both the backend and local state. The backend
+  // DELETE is the source of truth: `fileAPI.deleteUpload` hits
+  // `DELETE /uploads/{id}/` which is provided by the default
+  // ModelViewSet routing (FileUploadViewSet is a ModelViewSet, and its
+  // `get_queryset()` is already scoped to `request.user`, so a user can
+  // only delete their own rows). On success, the row stays gone after a
+  // page refresh — fixing the previous "delete is local-only" bug.
+  //
+  // We optimistically remove the row from state BEFORE the network call
+  // so the UI feels instant. The poller for that id is torn down first
+  // (defensive: a stale poll response that lands while the DELETE is
+  // in flight can't update state for a row we've already removed). On
+  // failure we re-insert the original row so the user can retry.
+  const handleDeleteUpload = async (uploadId) => {
+    if (deletingIds.has(uploadId)) return
+
+    if (
+      !window.confirm(
+        'Delete this project? This will permanently remove it from your dashboard and the server. The original file, generated documents, and CSV exports will be deleted.',
+      )
+    ) {
+      return
+    }
+
+    // Mark the row as deleting so the button can show a spinner and
+    // ignore further clicks.
+    setDeletingIds((prev) => {
+      const next = new Set(prev)
+      next.add(uploadId)
+      return next
+    })
+
+    // Tear down any in-flight poller for this row first.
+    const poller = pollersRef.current[uploadId]
+    if (poller) {
+      poller.active = false
+      if (poller.timer) clearTimeout(poller.timer)
+      pollersRef.current[uploadId] = null
+    }
+
+    // Snapshot the row so we can restore it on failure.
+    let removedRow = null
+    setUploads((prev) => {
+      removedRow = prev.find((u) => u.id === uploadId) || null
+      return prev.filter((u) => u.id !== uploadId)
+    })
+
+    try {
+      await fileAPI.deleteUpload(uploadId)
+    } catch (err) {
+      console.error('Failed to delete upload:', err)
+      // Re-insert the original row at its old position so the user can
+      // retry. We push to the end — the original ordering is hard to
+      // reconstruct from a single row.
+      if (removedRow) {
+        setUploads((prev) =>
+          prev.some((u) => u.id === uploadId) ? prev : [...prev, removedRow],
+        )
+      }
+      window.alert(
+        `Failed to delete this project. ${
+          err?.response?.data?.detail || err?.message || 'Please try again.'
+        }`,
+      )
+    } finally {
+      setDeletingIds((prev) => {
+        const next = new Set(prev)
+        next.delete(uploadId)
+        return next
+      })
+    }
   }
 
   const handleCloseModal = () => {
@@ -263,8 +331,9 @@ export default function ProjectsPage() {
               key={upload.id}
               upload={upload}
               ownerName={user?.first_name || user?.email}
-              onCardClick={handleCardClick}
               onRefresh={loadOnce}
+              onDelete={handleDeleteUpload}
+              isDeleting={deletingIds.has(upload.id)}
             />
           ))}
         </div>
@@ -286,7 +355,7 @@ export default function ProjectsPage() {
 // ============================================================
 // ProjectCard — one upload as a card.
 // ============================================================
-function ProjectCard({ upload, ownerName, onCardClick, onRefresh }) {
+function ProjectCard({ upload, ownerName, onRefresh, onDelete, isDeleting = false }) {
   const config = STATUS_CONFIG[upload.status] || { label: 'Unknown', color: '#6b7280', Icon: HelpCircle }
   const StatusIcon = config.Icon
   const FileIcon = FileIconFor[upload.file_type] || FileText
@@ -311,15 +380,6 @@ function ProjectCard({ upload, ownerName, onCardClick, onRefresh }) {
   return (
     <div
       className={`${styles.card} ${styles.projectCard} ${styles[`status_${upload.status}`] || ''}`}
-      onClick={(e) => onCardClick(e, upload.id)}
-      role="button"
-      tabIndex={0}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault()
-          onCardClick(e, upload.id)
-        }
-      }}
     >
       <div className={styles.cardTopRow}>
         <div className={styles.fileIcon}>
@@ -371,7 +431,7 @@ function ProjectCard({ upload, ownerName, onCardClick, onRefresh }) {
 
       {/* Quick-link chips — only when something is actually linked. */}
       {hasAnyLink && (
-        <div className={styles.quickLinks} onClick={(e) => e.stopPropagation()}>
+        <div className={styles.quickLinks}>
           {upload.drive_folder_url && (
             <a
               href={upload.drive_folder_url}
@@ -404,8 +464,8 @@ function ProjectCard({ upload, ownerName, onCardClick, onRefresh }) {
               className={styles.quickLinkChip}
               title="Open generated document"
             >
-              <FileText size={12} /> Doc
-              <ExternalLink size={10} />
+              <FileText size={15} /> Doc
+              <ExternalLink size={15} />
             </a>
           )}
           {firstResult.sheet_link && (
@@ -416,31 +476,43 @@ function ProjectCard({ upload, ownerName, onCardClick, onRefresh }) {
               className={styles.quickLinkChip}
               title="Open generated sheet"
             >
-              <Sheet size={12} /> Sheet
-              <ExternalLink size={10} />
+              <Sheet size={15} /> Sheet
+              <ExternalLink size={15} />
             </a>
           )}
         </div>
       )}
 
       {/* CSV export row — only when a sheet exists (matches the
-          Sheet chip gate above). e.stopPropagation prevents clicks
-          from triggering the card-level navigate handler. */}
+          Sheet chip gate above). */}
       {firstResult.sheet_link && (
-        <div onClick={(e) => e.stopPropagation()}>
-          <ExportButtons
-            upload={upload}
-            onExport={handleExport}
-            onCancel={handleCancel}
-            className={styles.exportRow}
-          />
-        </div>
+        <ExportButtons
+          upload={upload}
+          onExport={handleExport}
+          onCancel={handleCancel}
+          className={styles.exportRow}
+        />
       )}
 
       <div className={styles.cardFooter}>
-        <Link to={`/projects/${upload.id}`} className={styles.editLink} onClick={(e) => e.stopPropagation()}>
-          <PencilLine size={13} /> Edit details
-        </Link>
+        <button
+          type="button"
+          className={styles.deleteBtn}
+          onClick={() => onDelete?.(upload.id)}
+          disabled={isDeleting}
+          title={isDeleting ? 'Deleting…' : 'Delete from server and dashboard'}
+          aria-label="Delete project from server and dashboard"
+        >
+          {isDeleting ? (
+            <>
+              <Loader2 size={13} className={styles.spin} /> Deleting…
+            </>
+          ) : (
+            <>
+              <Trash2 size={13} /> Delete
+            </>
+          )}
+        </button>
       </div>
     </div>
   )

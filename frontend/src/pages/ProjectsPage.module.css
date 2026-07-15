@@ -334,6 +334,34 @@
   background: var(--accent-light);
 }
 
+/* ===== Delete button (replaces the old "Edit details" link) =====
+   A small red icon button that sits in the card footer. Sibling to the
+   export row, but separated by margin-left: auto so it docks to the
+   right. Hover lightens the background; the icon stays red. */
+.deleteBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #ef4444;
+  background: transparent;
+  border: none;
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.deleteBtn:hover {
+  background: #fef2f2;
+}
+
+.deleteBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* ===== Export row (Jira / Trello) — compact variant of the same
        .exportBtn family used in ProjectDetailPage.module.css. Padding and
        font-size are shrunk so the buttons fit alongside the Edit details

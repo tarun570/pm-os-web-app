@@ -153,13 +153,13 @@ CORS_ALLOW_CREDENTIALS = True
 # BOTH ports (5173 and 8000). Without this, Django's default empty Domain
 # means the cookie is host-only and may be scoped to the port that set it
 # in some browser configurations.
-SESSION_COOKIE_SAMESITE = 'Lax'
-# SESSION_COOKIE_DOMAIN = 'localhost'   # ← temporarily disabled to debug admin login
-SESSION_COOKIE_SECURE = False  # dev only — must be True in production (HTTPS)
-SESSION_COOKIE_HTTPONLY = True
-CSRF_COOKIE_SAMESITE = 'Lax'
-# CSRF_COOKIE_DOMAIN = 'localhost'      # ← temporarily disabled to debug admin login
-CSRF_COOKIE_SECURE = False  # dev only
+# SESSION_COOKIE_SAMESITE = 'Lax'
+# SESSION_COOKIE_DOMAIN = 'localhost'
+# SESSION_COOKIE_SECURE = False  # dev only — must be True in production (HTTPS)
+# SESSION_COOKIE_HTTPONLY = True
+# CSRF_COOKIE_SAMESITE = 'Lax'
+# CSRF_COOKIE_DOMAIN = 'localhost'
+# CSRF_COOKIE_SECURE = False  # dev only
 
 # REST Framework Configuration
 REST_FRAMEWORK = {

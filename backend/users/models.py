@@ -34,6 +34,8 @@ class CustomUser(AbstractUser):
         self.last_login_at = timezone.now()
         self.save()
 
+  
+
 
 class EmailVerificationToken(models.Model):
     user = models.OneToOneField(CustomUser, on_delete=models.CASCADE)

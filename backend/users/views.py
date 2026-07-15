@@ -130,6 +130,8 @@ class UserViewSet(viewsets.ModelViewSet):
             
             try:
                 user = User.objects.get(email=email)
+
+        
                 # USERNAME_FIELD is 'email' on CustomUser, so authenticate()
                 # looks up by the email column — not by the 'username' column.
                 # Passing user.username here returns None even with a correct
@@ -318,6 +320,10 @@ class UserViewSet(viewsets.ModelViewSet):
         ticket = secrets.token_urlsafe(32)
         request.session['gdrive_ticket'] = ticket
         request.session['gdrive_user_id'] = request.user.id
+    
+       
+
+
         # Make the session cookie live long enough to survive the Google
         # round-trip. The default is two weeks, which is plenty.
         request.session.set_expiry(60 * 30)  # 30 minutes
@@ -503,11 +509,11 @@ class FileUploadViewSet(viewsets.ModelViewSet):
             try:
                 # Trigger n8n webhook
                 webhook_url = settings.N8N_WEBHOOK_URL
-                callback_url = settings.N8N_CALLBACK_URL
+                # callback_url = settings.N8N_CALLBACK_URL
                 
                 print(f"\n[2] N8N CONFIGURATION:")
                 print(f"    Webhook URL: {webhook_url}")
-                print(f"    Callback URL: {callback_url}")
+                # print(f"    Callback URL: {callback_url}")
 
                 # Resolve a fresh Google Drive access token for the user. This
                 # may trigger a refresh-token round-trip to Google if the
@@ -540,14 +546,14 @@ class FileUploadViewSet(viewsets.ModelViewSet):
 
                 # Prepare file data
                 with open(file_upload.original_file.path, 'rb') as f:
-                    files = {'file_0': (file_upload.file_name, f, f'application/{file_upload.file_type}')}
+                    files = {'file': (file_upload.file_name, f, f'application/{file_upload.file_type}')}
                     data = {
-                        'upload_id': str(file_upload.id),
-                        'user_id': str(request.user.id),
+                        # 'upload_id': str(file_upload.id),
+                        # 'user_id': str(request.user.id),
                         'email': request.user.email,
                         'file_name': file_upload.file_name,
-                        'callback_url': callback_url,
-                        'google_access_token': google_access_token,
+                        # 'callback_url': callback_url,
+                        'access_token': google_access_token,
                     }
                     
                     print(f"\n[3] SENDING TO N8N:")
@@ -588,12 +594,18 @@ class FileUploadViewSet(viewsets.ModelViewSet):
                             normalized_response = response_data
 
                         def has_direct_result(payload):
+                            # Accept both spellings. n8n workflows in the wild
+                            # use 'share_with' (Django's canonical name) AND
+                            # 'shared_with' (English past-tense). We treat
+                            # them as the same key here so neither side has
+                            # to remember which name is right.
                             return bool(
                                 payload.get('processing_result') or
                                 payload.get('results') or
                                 payload.get('doc_link') or
                                 payload.get('sheet_link') or
                                 payload.get('share_with') or
+                                payload.get('shared_with') or
                                 payload.get('prd_url') or
                                 payload.get('prd_document')
                             )
@@ -602,11 +614,18 @@ class FileUploadViewSet(viewsets.ModelViewSet):
                             print(f"    ✓ n8n returned direct result data, completing upload immediately")
                             processing_result = normalized_response.get('processing_result') or normalized_response.get('results')
                             if processing_result is None:
-                                processing_result = {
-                                    k: normalized_response[k]
-                                    for k in ['doc_link', 'sheet_link', 'share_with', 'prd_url', 'prd_document']
-                                    if k in normalized_response and normalized_response[k] is not None
-                                }
+                                # Build the dict from individual keys, accepting
+                                # both 'share_with' and 'shared_with'. If both
+                                # are present, prefer the canonical 'share_with'.
+                                result = {}
+                                for k in ['doc_link', 'sheet_link', 'share_with', 'prd_url', 'prd_document']:
+                                    if payload_k := normalized_response.get(k):
+                                        result[k] = payload_k
+                                # Backfill the alias — only store it if the
+                                # canonical key wasn't already provided.
+                                if 'share_with' not in result and normalized_response.get('shared_with'):
+                                    result['share_with'] = normalized_response['shared_with']
+                                processing_result = result
 
                             file_upload.processing_result = processing_result
                             file_upload.prd_document = normalized_response.get('prd_url') or normalized_response.get('prd_document')
@@ -944,11 +963,15 @@ class FileUploadViewSet(viewsets.ModelViewSet):
                 print(f"    ❌ ERROR: FileUpload with id={upload_id} not found!")
                 raise
 
-            # Extract result fields
+            # Extract result fields. n8n workflows in the wild use BOTH
+            # 'share_with' (Django's canonical name) AND 'shared_with'
+            # (English past-tense, what one of our workflows sends). We
+            # resolve the alias here so the DB row stores the value under
+            # the canonical key regardless of which the workflow used.
             print(f"\n[7] EXTRACTING RESULT FIELDS:")
             doc_link = payload.get('doc_link')
             sheet_link = payload.get('sheet_link')
-            share_with = payload.get('share_with')
+            share_with = payload.get('share_with') or payload.get('shared_with')
             print(f"    doc_link: {doc_link}")
             print(f"    sheet_link: {sheet_link}")
             print(f"    share_with: {share_with}")
@@ -981,6 +1004,13 @@ class FileUploadViewSet(viewsets.ModelViewSet):
                 for k in keys:
                     if payload.get(k) is not None:
                         result[k] = payload.get(k)
+
+                # Backfill 'shared_with' under the canonical 'share_with' key
+                # if it wasn't already provided. We don't store the alias
+                # itself — the frontend (FileHistory.jsx) only reads
+                # processing_result.share_with.
+                if 'share_with' not in result and payload.get('shared_with') is not None:
+                    result['share_with'] = payload.get('shared_with')
 
                 if result:
                     processing_result = result

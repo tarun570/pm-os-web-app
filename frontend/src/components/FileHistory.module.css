@@ -350,21 +350,24 @@
 }
 
 .resultSummary li {
-  padding: 4px 0;
-  font-size: 12px;
+  padding: 6px 0;
+  font-size: 15px;
   color: #3a3d4a;
 }
 
 .resultKey {
   color: #e8365d;
   font-weight: 600;
-  margin-right: 4px;
+  margin-right: 6px;
+  font-size: 15px;
 }
 
 .resultLink {
   color: #0f62fe;
   margin-left: 8px;
   text-decoration: underline;
+  font-size: 15px;
+  font-weight: 500;
 }
 
 @media (max-width: 768px) {

@@ -81,6 +81,7 @@ export default function ExportButtons({ upload, onExport, onCancel, exportingTyp
     if (isProcessing) Icon = Loader2
     else if (isReady) Icon = Download
     else if (isFailed) Icon = AlertCircle
+    else Icon = Download // default "Export to Jira/Trello" — show download glyph
 
     return (
       <button
