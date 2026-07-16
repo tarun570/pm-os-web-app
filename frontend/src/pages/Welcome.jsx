@@ -180,11 +180,13 @@ export default function Welcome() {
     }
   }
 
+  // FileUpload navigates to /projects on a successful upload, so the
+  // success callback is mostly a no-op here — we just prepend the new
+  // row for a moment's worth of in-state consistency. The redirect
+  // will take the user to the Projects page where the new card shows
+  // its live status badge.
   const handleUploadSuccess = (newUpload) => {
-    setUploads((prev) => [newUpload, ...prev])
-    setShowUploadSection(false)
-    setGdriveToast('✓ File uploaded. Processing has started.')
-    setTimeout(() => setGdriveToast(null), 4000)
+    setUploads((prev) => [newUpload, ...prev.filter((u) => u.id !== newUpload.id)])
   }
 
   const handleConnectDrive = async () => {
@@ -267,7 +269,7 @@ export default function Welcome() {
                     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
                   }}
                 >
-                  <Zap size={16} /> {showUploadSection ? 'Hide Upload' : 'Upload Your First SOW'}
+                  <Zap size={16} /> {showUploadSection ? 'Hide Upload' : 'Upload Your SOW'}
                 </button>
                 <a className={styles.secondaryBtn} href="#projects">
                   <ListChecks size={16} /> View Project Details
@@ -329,7 +331,10 @@ export default function Welcome() {
           <ProjectDetails />
         </section>
 
-        {/* ===== Upload SOW ===== */}
+        {/* ===== Upload SOW =====
+            FileUpload redirects to /projects on a successful upload,
+            so the user lands on the Projects page where their new
+            card shows the live status badge (Processing → Completed). */}
         <section id="upload" ref={uploadRef} className={`${styles.section} ${styles.uploadSection}`}>
           <div className={styles.sectionHeading}>
             <div className={styles.sectionHeadingIcon}>

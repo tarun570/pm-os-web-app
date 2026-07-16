@@ -40,10 +40,11 @@ export default function OverviewPage() {
     }
   }, [])
 
+  // FileUpload internally calls navigate('/projects') on a successful
+  // upload, so we don't need to do anything here besides prepending
+  // the new row to local state for the workspace counts.
   const handleUploadSuccess = (newUpload) => {
-    // Prepend the new row so counts update immediately without a refetch.
-    setUploads((prev) => [newUpload, ...prev])
-    setShowUpload(false)
+    setUploads((prev) => [newUpload, ...prev.filter((u) => u.id !== newUpload.id)])
   }
 
   // First name fallbacks — same shape Welcome.jsx used.
@@ -87,7 +88,7 @@ export default function OverviewPage() {
               className={`${styles.primaryBtn} gradient-button`}
               onClick={() => setShowUpload((v) => !v)}
             >
-              <Zap size={16} /> {showUpload ? 'Hide upload' : 'Upload Your First SOW'}
+              <Zap size={16} /> {showUpload ? 'Hide upload' : 'Upload Your SOW'}
             </button>
             <Link to="/projects" className={styles.secondaryBtn}>
               <ListChecks size={16} /> View Project Details
@@ -121,7 +122,7 @@ export default function OverviewPage() {
               <div>
                 <h3>No projects yet</h3>
                 <p>
-                  Upload your first SOW and PM OS will generate a complete
+                  Upload your SOW and PM OS will generate a complete
                   project plan for you.
                 </p>
               </div>
@@ -192,7 +193,10 @@ export default function OverviewPage() {
         )}
       </section>
 
-      {/* ===== Inline upload section (toggled by the primary CTA) ===== */}
+      {/* ===== Inline upload section (toggled by the primary CTA) =====
+          FileUpload redirects to /projects on success, so the user lands
+          on the Projects page where their new card shows the live
+          status badge (Processing → Completed). */}
       {showUpload && (
         <section className={styles.uploadSection}>
           <div className={styles.sectionHeading}>

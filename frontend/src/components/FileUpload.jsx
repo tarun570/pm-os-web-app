@@ -1,6 +1,7 @@
 
 
 import React, { useState,useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { fileAPI } from '../api/auth'
 import { UploadCloud, AlertTriangle, Loader2 } from 'lucide-react'
 import styles from './FileUpload.module.css'
@@ -11,6 +12,7 @@ export default function FileUpload({ onUploadSuccess }) {
   const [error, setError] = useState('')
   const [selectedFile, setSelectedFile] = useState(null)
   const fileInputRef = useRef(null)
+  const navigate = useNavigate()
 
   const handleDragOver = (e) => {
     e.preventDefault()
@@ -75,48 +77,33 @@ export default function FileUpload({ onUploadSuccess }) {
 
     try {
       const response = await fileAPI.uploadFile(file)
-      
+
       if (response.status === 201 || response.status === 202) {
         const initialUpload = response.data.upload
         setError('')
 
-        // Poll the upload until it is no longer processing (or times out)
-        const pollUploadStatus = async (uploadId, attempts = 0) => {
-          try {
-            const res = await fileAPI.getUpload(uploadId)
-            const latest = res.data
-
-            // If status changed, notify parent with latest object
-            if (latest.status && latest.status !== 'processing') {
-              onUploadSuccess(latest)
-              return latest
-            }
-
-            // stop after ~40s (20 attempts * 2s)
-            if (attempts >= 20) {
-              onUploadSuccess(latest) // give the latest we have
-              return latest
-            }
-
-            await new Promise((r) => setTimeout(r, 2000))
-            return pollUploadStatus(uploadId, attempts + 1)
-          } catch (e) {
-            // On error, still call parent with initial upload so it appears in the list
-            onUploadSuccess(initialUpload)
-            return initialUpload
-          }
+        // Notify parent with the freshly-uploaded row so it can prepend
+        // the card immediately (no waiting for the next list fetch).
+        if (onUploadSuccess) {
+          onUploadSuccess(initialUpload)
         }
 
-        // start polling in background
-        pollUploadStatus(initialUpload.id)
-
-        // clear selection and reset input immediately
+        // Reset the file input now that the upload is accepted.
         setSelectedFile(null)
         if (fileInputRef.current) fileInputRef.current.value = ''
         const fileInput = document.getElementById('file-input')
         if (fileInput) {
           fileInput.value = ''
         }
+
+        // Redirect to the Projects page so the user sees their new
+        // upload as a card with a live status badge (Processing →
+        // Completed). The Projects page already polls any 'processing'
+        // rows it sees, so the badge will update without any extra
+        // work on this side. We pass `state.fromUpload` so the
+        // Projects page can optionally scroll the new card into view.
+        navigate('/projects', { state: { fromUpload: true, uploadId: initialUpload.id } })
+        return
       }
     } catch (err) {
       const backendError = err.response?.data?.error

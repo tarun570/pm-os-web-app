@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { fileAPI } from '../api/auth'
 import useCsvExport from '../hooks/useCsvExport'
@@ -65,6 +66,7 @@ function formatFileSize(bytes) {
 
 export default function ProjectsPage() {
   const { user } = useAuth()
+  const location = useLocation()
   const [uploads, setUploads] = useState([])
   const [loading, setLoading] = useState(true)
   const [showUploadModal, setShowUploadModal] = useState(false)
@@ -76,6 +78,30 @@ export default function ProjectsPage() {
 
   // Tracks per-upload poll loops. Cleared on unmount.
   const pollersRef = useRef({})   // { [uploadId]: { active, timer } }
+
+  // If the user lands here via the FileUpload redirect, the location
+  // state carries the new upload's id. We use it to scroll the card
+  // into view once it appears in the list. Stored in a ref (not state)
+  // so the "scroll into view" effect and the "sync from location.state"
+  // effect can't re-trigger each other — a state-based version produced
+  // an infinite setState loop that snapped the page back to the top.
+  // The ref is consumed exactly once: the scroll effect reads + clears it.
+  const justUploadedIdRef = useRef(location.state?.uploadId || null)
+  const [justUploadedIdVersion, setJustUploadedIdVersion] = useState(0)  // bump to force one re-run of the scroll effect
+
+  // Watch for subsequent navigations to /projects with a new uploadId
+  // (FileUpload.jsx always passes one when it redirects here). Bumping a
+  // version counter (instead of writing the id into state) is what wakes
+  // up the scroll effect without making the id itself reactive.
+  useEffect(() => {
+    const incoming = location.state?.uploadId
+    if (incoming && incoming !== justUploadedIdRef.current) {
+      justUploadedIdRef.current = incoming
+      setJustUploadedIdVersion((v) => v + 1)
+    }
+  }, [location.state])
+
+  const cardRefsRef = useRef({})  // { [uploadId]: HTMLElement }
 
   // ---- Data fetching ----
 
@@ -105,6 +131,27 @@ export default function ProjectsPage() {
   useEffect(() => {
     loadOnce()
   }, [loadOnce])
+
+  // After the redirected upload shows up in the list, scroll its card
+  // into view so the user can immediately see the live status badge.
+  // Reads the id from a ref so this effect can clear it without causing
+  // a re-render / re-run of itself. `justUploadedIdVersion` is the only
+  // thing in the dep list that can re-fire this effect (when a new
+  // upload id arrives via the location-state effect).
+  useEffect(() => {
+    const targetId = justUploadedIdRef.current
+    if (!targetId) return
+    if (loading) return
+    const el = cardRefsRef.current[targetId]
+    if (el) {
+      // small delay so the layout settles (cards re-flow on the prepend)
+      setTimeout(() => {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }, 50)
+      // Consume the ref — a subsequent uploads change won't re-scroll.
+      justUploadedIdRef.current = null
+    }
+  }, [uploads, loading, justUploadedIdVersion])
 
   // ---- Polling for `processing` rows ----
   //
@@ -180,14 +227,15 @@ export default function ProjectsPage() {
 
   // ---- Actions ----
 
-  // Insert a freshly-uploaded row at the top of the list. The modal polls
-  // internally (FileUpload.jsx's existing 2s/40s loop), so we trust its
-  // callback for the initial row and let our own poller pick up the
-  // 'processing' → 'completed' transition.
+  // Insert a freshly-uploaded row at the top of the list, then close
+  // the modal. FileUpload.jsx navigates to /projects on success, but
+  // when the upload happens *inside* this page's modal we don't need
+  // the extra navigate — closing the modal is enough to reveal the new
+  // card, and the page's existing poller will keep its status badge
+  // up to date (Processing → Completed).
   const handleUploadSuccess = (newUpload) => {
     setUploads((prev) => [newUpload, ...prev.filter((u) => u.id !== newUpload.id)])
-    // Don't close the modal here — the user might want to see the
-    // "Upload started" state. They can dismiss it themselves.
+    setShowUploadModal(false)
   }
 
   // Delete a project from both the backend and local state. The backend
@@ -317,6 +365,10 @@ export default function ProjectsPage() {
               onRefresh={loadOnce}
               onDelete={handleDeleteUpload}
               isDeleting={deletingIds.has(upload.id)}
+              registerCardRef={(el) => {
+                if (el) cardRefsRef.current[upload.id] = el
+                else delete cardRefsRef.current[upload.id]
+              }}
             />
           ))}
         </div>
@@ -338,7 +390,7 @@ export default function ProjectsPage() {
 // ============================================================
 // ProjectCard — one upload as a card.
 // ============================================================
-function ProjectCard({ upload, ownerName, onRefresh, onDelete, isDeleting = false }) {
+function ProjectCard({ upload, ownerName, onRefresh, onDelete, isDeleting = false, registerCardRef }) {
   const config = STATUS_CONFIG[upload.status] || { label: 'Unknown', color: '#6b7280', Icon: HelpCircle }
   const StatusIcon = config.Icon
   const FileIcon = FileIconFor[upload.file_type] || FileText
@@ -362,6 +414,7 @@ function ProjectCard({ upload, ownerName, onRefresh, onDelete, isDeleting = fals
 
   return (
     <div
+      ref={registerCardRef}
       className={`${styles.card} ${styles.projectCard} ${styles[`status_${upload.status}`] || ''}`}
     >
       <div className={styles.cardTopRow}>
@@ -520,7 +573,7 @@ function EmptyState({ onAdd }) {
         className={`${styles.addBtn} gradient-button`}
         onClick={onAdd}
       >
-        <Plus size={16} /> Upload Your First SOW
+        <Plus size={16} /> Upload Your SOW
       </button>
     </div>
   )
