@@ -224,3 +224,69 @@ N8N_CALLBACK_URL = config('N8N_CALLBACK_URL', default='http://localhost:8000/api
 JIRA_N8N_WEBHOOK_URL = config('Jira_n8n_webhook_url', default='')
 TRELLO_N8N_WEBHOOK_URL = config('Trello_n8n_webhook_url', default='')
 N8N_CSV_CALLBACK_URL = config('N8N_CSV_CALLBACK_URL', default='http://localhost:8000/api/uploads/csv_callback/')
+
+
+# ----------------------------------------------------------------------
+# Celery + Redis configuration
+#
+# The SOW upload pipeline (Google token refresh + 300s n8n POST) is
+# decoupled from the HTTP request thread via Celery. The `upload` view
+# saves the FileUpload row, enqueues a task with `.delay()`, and returns
+# 202 immediately. A separate worker process consumes the task and does
+# the slow work. The frontend polls `GET /uploads/{id}/` for status.
+#
+# Both the broker (queue of pending tasks) and the result backend (where
+# return values would be stored) use Redis by default. Override via
+# backend/.env if you have a remote broker.
+#
+# Start the worker with: `celery -A config worker -l info`
+# (in a separate terminal, with the venv activated and Redis running)
+# ----------------------------------------------------------------------
+
+# Broker is where tasks are queued. `localhost:6379/0` is the default
+# Redis instance on the default DB. The `config('...')` call lets
+# `CELERY_BROKER_URL` be overridden in backend/.env without code changes.
+CELERY_BROKER_URL = config('CELERY_BROKER_URL', default='redis://localhost:6379/0')
+
+# Result backend stores return values + task state. We don't actually
+# use task return values (the FileUpload row is the source of truth) but
+# Celery requires a backend to be configured. Using the same Redis
+# instance keeps infrastructure to one service.
+CELERY_RESULT_BACKEND = config('CELERY_RESULT_BACKEND', default='redis://localhost:6379/0')
+
+# JSON only — no pickle. Pickle is a security risk if the broker is
+# accessible to untrusted writers, and JSON is sufficient for the small
+# payloads (just an int upload_id) we send.
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_ACCEPT_CONTENT = ['json']
+
+# Match Django's TIME_ZONE above (UTC).
+CELERY_TIMEZONE = 'UTC'
+
+# Task is acknowledged only after the task function returns successfully.
+# If the worker is killed mid-task (Ctrl-C, OOM, host reboot), the message
+# is requeued and retried on the next worker. Critical because the n8n
+# POST can take up to 5 minutes — losing one because the worker restarted
+# would silently leave the user's upload in 'processing' forever.
+CELERY_TASK_ACKS_LATE = True
+
+# If a worker process is lost mid-task, requeue the message instead of
+# dropping it. Pairs with `ACKS_LATE` — without it, lost workers would
+# ack-on-prefetch and the message would be gone.
+CELERY_TASK_REJECT_ON_WORKER_LOST = True
+
+# Hard kill at 10 minutes. n8n's webhook timeout is 300s; we give 2x
+# headroom for retries before the worker kills the task forcefully.
+CELERY_TASK_TIME_LIMIT = 600
+
+# Soft kill at 9 minutes. The task gets `SoftTimeLimitExceeded` and can
+# catch it to do cleanup (mark_failed, close file handles) before the
+# hard kill at 10 min.
+CELERY_TASK_SOFT_TIME_LIMIT = 540
+
+# One task at a time per worker. Default is 4, which would mean a
+# 4-upload batch is held in memory while the worker processes them
+# serially (each takes minutes). With prefetch=1, a fresh worker can
+# pick up the next message the moment the previous task finishes.
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1

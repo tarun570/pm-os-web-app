@@ -32,6 +32,7 @@ except (AttributeError, ValueError):
     pass
 
 from users import google_drive
+from users.tasks import process_sow_upload
 from users.models import EmailVerificationToken, GoogleOAuthToken, FileUpload, UserStory, Resource, SprintPlanRow
 from users.serializers import (
     UserSerializer, RegisterSerializer, LoginSerializer,
@@ -468,256 +469,149 @@ class FileUploadViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
     def upload(self, request):
-        """Upload a file and send it to n8n webhook"""
+        """Upload a file and dispatch the slow n8n work to a Celery worker.
+
+        The HTTP request does only the fast stuff: validate, save the row,
+        extract SOW text, fast-fail on Google Drive, then enqueue a task
+        and return 202. A separate Celery worker (started with
+        `celery -A config worker -l info`) consumes the task and does the
+        slow n8n POST + response parsing. The frontend polls
+        `GET /uploads/{id}/` for status, just like before.
+
+        Why this is split out: doing the n8n POST inline (the previous
+        implementation) meant the HTTP request could block for up to 300s
+        waiting on n8n. Browser and proxy timeouts would drop the
+        connection, the frontend's axios call would reject, and the user
+        would see "Upload failed" — even though the Django process kept
+        working and eventually produced a valid row. With Celery, the
+        request returns in milliseconds, the user gets immediate feedback,
+        and the heavy work continues safely in the background.
+        """
         print("\n" + "="*60)
-        print("📤 FILE UPLOAD INITIATED")
+        print("📤 FILE UPLOAD INITIATED (async via Celery)")
         print("="*60)
-        
+
         serializer = FileUploadCreateSerializer(
             data=request.data,
             context={'request': request}
         )
-        
-        if serializer.is_valid():
-            file_upload = serializer.save()
-            print(f"\n[1] FILE CREATED:")
+
+        if not serializer.is_valid():
+            print(f"\n❌ VALIDATION FAILED:")
+            print(f"    Errors: {serializer.errors}")
+            print("="*60 + "\n")
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        file_upload = serializer.save()
+        print(f"\n[1] FILE CREATED:")
+        print(f"    Upload ID: {file_upload.id}")
+        print(f"    File name: {file_upload.file_name}")
+        print(f"    File size: {file_upload.file_size} bytes")
+        print(f"    Status: {file_upload.status}")
+
+        # ------------------------------------------------------------------
+        # Best-effort SOW text extraction. Persists the plain-text
+        # content of the upload to FileUpload.sow_text so the frontend
+        # can preview / search without round-tripping through MEDIA_ROOT,
+        # and so future features (semantic search, "ask the SOW") have
+        # the text on hand. Never fails the upload: extraction is
+        # independent of the n8n pipeline that runs in the worker.
+        # ------------------------------------------------------------------
+        try:
+            extracted = extract_text(
+                file_upload.original_file.path,
+                file_upload.file_type,
+            )
+            if extracted:
+                file_upload.sow_text = extracted
+                file_upload.save(update_fields=['sow_text', 'updated_at'])
+                print(f"    SOW text: ✓ extracted {len(extracted)} chars")
+            else:
+                print(f"    SOW text: — (no text returned for {file_upload.file_type})")
+        except Exception as exc:
+            print(f"    SOW text: ✗ {exc}")
+
+        # ------------------------------------------------------------------
+        # Fast-fail on Google Drive. We DO this on the request thread (not
+        # in the worker) so users without Drive connected see the friendly
+        # "Please connect your Google Drive" error in <1s instead of
+        # waiting 5 minutes for the worker to discover the same thing.
+        # The frontend's `err.response?.data?.code === 'gdrive_not_connected'`
+        # branch matches the response shape we return here.
+        # ------------------------------------------------------------------
+        try:
+            google_drive.get_valid_access_token(request.user)
+            print(f"    Google Drive: ✓ fresh access token resolved")
+        except google_drive.GoogleDriveNotConnected as exc:
+            file_upload.mark_failed(str(exc))
+            print(f"    Google Drive: ✗ {exc}")
+            return Response(
+                {
+                    'error': str(exc),
+                    'code': 'gdrive_not_connected',
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except google_drive.GoogleDriveError as exc:
+            file_upload.mark_failed(f"Google Drive error: {exc}")
+            print(f"    Google Drive: ✗ {exc}")
+            return Response(
+                {
+                    'error': f"Google Drive error: {exc}",
+                    'code': 'gdrive_error',
+                },
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        # ------------------------------------------------------------------
+        # Enqueue the slow work. The worker (separate process) will:
+        #   - mark the row as 'processing'
+        #   - re-resolve a fresh Drive token (handles expiry between
+        #     enqueue and pickup)
+        #   - POST the file to n8n (up to 300s)
+        #   - update the row to 'completed' (sync result) or leave it
+        #     in 'processing' for the async callback
+        #
+        # `.delay()` returns an AsyncResult; we don't need it. If the
+        # broker is unreachable (Redis down), this raises — see
+        # CLAUDE.md "gotchas" for the failure mode.
+        # ------------------------------------------------------------------
+        try:
+            process_sow_upload.delay(file_upload.id)
+            print(f"\n[2] CELERY TASK ENQUEUED:")
+            print(f"    Task: users.process_sow_upload")
             print(f"    Upload ID: {file_upload.id}")
-            print(f"    File name: {file_upload.file_name}")
-            print(f"    File size: {file_upload.file_size} bytes")
-            print(f"    Status: {file_upload.status}")
+        except Exception as exc:
+            # The broker (Redis) is unreachable. Mark the row failed so
+            # the user gets a clear error rather than a stuck 'pending'.
+            msg = f"Failed to enqueue processing task: {exc}"
+            file_upload.mark_failed(msg)
+            print(f"\n❌ CELERY ENQUEUE FAILED: {type(exc).__name__}: {exc}")
+            print("="*60 + "\n")
+            return Response(
+                {'error': msg, 'code': 'broker_unreachable'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
 
-            # Best-effort SOW text extraction. Persists the plain-text
-            # content of the upload to FileUpload.sow_text so the frontend
-            # can preview / search without round-tripping through MEDIA_ROOT,
-            # and so future features (semantic search, "ask the SOW") have
-            # the text on hand. Never fails the upload: extraction is
-            # independent of the n8n pipeline that runs further down.
-            try:
-                extracted = extract_text(
-                    file_upload.original_file.path,
-                    file_upload.file_type,
-                )
-                if extracted:
-                    file_upload.sow_text = extracted
-                    file_upload.save(update_fields=['sow_text', 'updated_at'])
-                    print(f"    SOW text: ✓ extracted {len(extracted)} chars")
-                else:
-                    print(f"    SOW text: — (no text returned for {file_upload.file_type})")
-            except Exception as exc:
-                print(f"    SOW text: ✗ {exc}")
-
-            try:
-                # Trigger n8n webhook
-                webhook_url = settings.N8N_WEBHOOK_URL
-                # callback_url = settings.N8N_CALLBACK_URL
-                
-                print(f"\n[2] N8N CONFIGURATION:")
-                print(f"    Webhook URL: {webhook_url}")
-                # print(f"    Callback URL: {callback_url}")
-
-                # Resolve a fresh Google Drive access token for the user. This
-                # may trigger a refresh-token round-trip to Google if the
-                # stored access_token is expired. The refresh_token NEVER
-                # leaves the server — only the short-lived access_token is
-                # sent to n8n below.
-                try:
-                    google_access_token = google_drive.get_valid_access_token(request.user)
-                    print(f"    Google Drive: ✓ fresh access token resolved")
-                except google_drive.GoogleDriveNotConnected as exc:
-                    file_upload.mark_failed(str(exc))
-                    print(f"    Google Drive: ✗ {exc}")
-                    return Response(
-                        {
-                            'error': str(exc),
-                            'code': 'gdrive_not_connected',
-                        },
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-                except google_drive.GoogleDriveError as exc:
-                    file_upload.mark_failed(f"Google Drive error: {exc}")
-                    print(f"    Google Drive: ✗ {exc}")
-                    return Response(
-                        {
-                            'error': f"Google Drive error: {exc}",
-                            'code': 'gdrive_error',
-                        },
-                        status=status.HTTP_502_BAD_GATEWAY,
-                    )
-
-                # Prepare file data
-                with open(file_upload.original_file.path, 'rb') as f:
-                    files = {'file': (file_upload.file_name, f, f'application/{file_upload.file_type}')}
-                    data = {
-                        # 'upload_id': str(file_upload.id),
-                        # 'user_id': str(request.user.id),
-                        'email': request.user.email,
-                        'file_name': file_upload.file_name,
-                        # 'callback_url': callback_url,
-                        'access_token': google_access_token,
-                    }
-                    
-                    print(f"\n[3] SENDING TO N8N:")
-                    print(f"    Method: POST")
-                    print(f"    URL: {webhook_url}")
-                    print(f"    Data fields: {list(data.keys())}")
-                    print(f"    File: {file_upload.file_name}")
-                    
-                    # Send to n8n webhook
-                    response = http_requests.post(
-                        webhook_url,
-                        files=files,
-                        data=data,
-                        timeout=300
-                    )
-                    
-                    print(f"\n[4] N8N RESPONSE:")
-                    print(f"    Status code: {response.status_code}")
-                    print(f"    Headers: {dict(response.headers)}")
-                    print(f"    Body: {response.text[:500] if response.text else '(empty)'}")
-                    
-                    if response.status_code in [200, 201]:
-                        response_data = {}
-                        if response.text:
-                            try:
-                                response_data = response.json()
-                                print(f"    Parsed JSON: {response_data}")
-                            except ValueError:
-                                print(f"    Could not parse JSON")
-                                response_data = {}
-
-                        normalized_response = {}
-                        if isinstance(response_data, list) and response_data:
-                            first_item = response_data[0]
-                            if isinstance(first_item, dict):
-                                normalized_response = first_item
-                        elif isinstance(response_data, dict):
-                            normalized_response = response_data
-
-                        def has_direct_result(payload):
-                            # Accept both spellings. n8n workflows in the wild
-                            # use 'share_with' (Django's canonical name) AND
-                            # 'shared_with' (English past-tense). We treat
-                            # them as the same key here so neither side has
-                            # to remember which name is right.
-                            return bool(
-                                payload.get('processing_result') or
-                                payload.get('results') or
-                                payload.get('doc_link') or
-                                payload.get('sheet_link') or
-                                payload.get('share_with') or
-                                payload.get('shared_with') or
-                                payload.get('prd_url') or
-                                payload.get('prd_document')
-                            )
-
-                        if normalized_response and has_direct_result(normalized_response):
-                            print(f"    ✓ n8n returned direct result data, completing upload immediately")
-                            processing_result = normalized_response.get('processing_result') or normalized_response.get('results')
-                            if processing_result is None:
-                                # Build the dict from individual keys, accepting
-                                # both 'share_with' and 'shared_with'. If both
-                                # are present, prefer the canonical 'share_with'.
-                                result = {}
-                                for k in ['doc_link', 'sheet_link', 'share_with', 'prd_url', 'prd_document']:
-                                    if payload_k := normalized_response.get(k):
-                                        result[k] = payload_k
-                                # Backfill the alias — only store it if the
-                                # canonical key wasn't already provided.
-                                if 'share_with' not in result and normalized_response.get('shared_with'):
-                                    result['share_with'] = normalized_response['shared_with']
-                                processing_result = result
-
-                            file_upload.processing_result = processing_result
-                            file_upload.prd_document = normalized_response.get('prd_url') or normalized_response.get('prd_document')
-                            file_upload.project_plan = normalized_response.get('project_plan')
-                            file_upload.drive_folder_url = normalized_response.get('drive_folder_url') or normalized_response.get('folder_url')
-                            file_upload.mark_completed(processing_result)
-                            print(f"    ✓ FileUpload marked as completed")
-
-                            workflow_id = normalized_response.get('workflow_id')
-                            if workflow_id:
-                                file_upload.n8n_workflow_id = workflow_id
-                                file_upload.save()
-                                print(f"    Workflow ID saved: {workflow_id}")
-
-                            print(f"\n[5] RESPONSE TO FRONTEND:")
-                            print(f"    Status: 201 Created")
-                            print(f"    Upload ID: {file_upload.id}")
-                            print(f"    Final status: {file_upload.status}")
-                            print("="*60 + "\n")
-                            return Response(
-                                {
-                                    'message': 'File uploaded and processed',
-                                    'upload': FileUploadSerializer(file_upload).data
-                                },
-                                status=status.HTTP_201_CREATED
-                            )
-
-                        file_upload.mark_processing()
-                        print(f"    ✓ Response OK, marked as processing")
-                        
-                        workflow_id = None
-                        if isinstance(response_data, dict):
-                            workflow_id = response_data.get('workflow_id')
-                        elif isinstance(response_data, list) and response_data:
-                            first_item = response_data[0]
-                            if isinstance(first_item, dict):
-                                workflow_id = first_item.get('workflow_id')
-
-                        if workflow_id:
-                            file_upload.n8n_workflow_id = workflow_id
-                            file_upload.save()
-                            print(f"    Workflow ID saved: {workflow_id}")
-                        
-                        print(f"\n[5] RESPONSE TO FRONTEND:")
-                        print(f"    Status: 201 Created")
-                        print(f"    Upload ID: {file_upload.id}")
-                        print("="*60 + "\n")
-                        
-                        return Response(
-                            {
-                                'message': 'File uploaded and sent to processing',
-                                'upload': FileUploadSerializer(file_upload).data
-                            },
-                            status=status.HTTP_201_CREATED
-                        )
-                    else:
-                        details = response.text
-                        try:
-                            parsed = response.json()
-                            if isinstance(parsed, dict):
-                                details = parsed.get('message') or parsed.get('detail') or details
-                        except ValueError:
-                            pass
-                        
-                        print(f"    ❌ Response ERROR: {response.status_code}")
-                        print(f"    Details: {details}")
-                        file_upload.mark_failed(f"n8n webhook error: {response.status_code} {details}")
-                        print("="*60 + "\n")
-                        return Response(
-                            {
-                                'error': 'Failed to send file to processing',
-                                'details': details,
-                                'status_code': response.status_code,
-                            },
-                            status=status.HTTP_400_BAD_REQUEST
-                        )
-            except Exception as e:
-                file_upload.mark_failed(str(e))
-                print(f"\n❌ EXCEPTION: {type(e).__name__}")
-                print(f"    Message: {str(e)}")
-                import traceback
-                print(f"    Traceback:\n{traceback.format_exc()}")
-                print("="*60 + "\n")
-                return Response(
-                    {'error': f'Error processing upload: {str(e)}'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-        
-        print(f"\n❌ VALIDATION FAILED:")
-        print(f"    Errors: {serializer.errors}")
+        print(f"\n[3] RESPONSE TO FRONTEND:")
+        print(f"    Status: 202 Accepted (background processing)")
+        print(f"    Upload ID: {file_upload.id}")
+        print(f"    Row status: {file_upload.status} (worker will flip to 'processing')")
         print("="*60 + "\n")
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        # ------------------------------------------------------------------
+        # 202 Accepted — the request is valid, the row is saved, the work
+        # is queued, but processing is happening out-of-band. The
+        # frontend's existing poll loop (FileUpload.jsx) picks up the
+        # status transitions as the worker progresses.
+        # ------------------------------------------------------------------
+        return Response(
+            {
+                'message': 'File uploaded, processing in background',
+                'upload': FileUploadSerializer(file_upload).data,
+            },
+            status=status.HTTP_202_ACCEPTED,
+        )
 
     @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
     def list_uploads(self, request):
