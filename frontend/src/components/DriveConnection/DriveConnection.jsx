@@ -45,6 +45,7 @@ export default function DriveConnection() {
       case 'connected':
         message = '✓ Google Drive connected. Outputs will save to your Drive.'
         fetchCurrentUser()
+        window.location.reload()
         break
       case 'denied':
         message = 'Google Drive connection was cancelled. You can try again anytime.'

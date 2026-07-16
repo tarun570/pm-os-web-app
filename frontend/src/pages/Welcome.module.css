@@ -41,14 +41,18 @@
 
 .hero {
   display: grid;
-  grid-template-columns: 1.1fr 0.9fr;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
   gap: 60px;
   align-items: center;
 }
 
-@media (max-width: 960px) {
+/* Stack the hero earlier (1100px instead of 960px) so the Workspace
+   card has full row width at high browser zoom levels — otherwise the
+   0.9fr column gets squeezed past the point where the 2x2 tile grid
+   can render cleanly. */
+@media (max-width: 1100px) {
   .hero {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     gap: 40px;
   }
 }
@@ -151,7 +155,12 @@
   transform: translateY(-1px);
 }
 
-/* Stats card (replaces the old emoji "📊 Projects" placeholder) */
+/* Stats card (replaces the old emoji "📊 Projects" placeholder).
+   `overflow: hidden` was clipping the card content at higher browser
+   zoom levels because the 2x2 grid inside couldn't shrink past the
+   label/value intrinsic widths. We let the radial-glow ::before
+   clip itself with its own border-radius+mask instead, so the card
+   itself can grow/shrink fluidly. */
 .statsCard {
   background: var(--card);
   border: 1.5px solid var(--border);
@@ -159,10 +168,13 @@
   padding: 28px;
   box-shadow: var(--shadow-lg);
   position: relative;
-  overflow: hidden;
+  /* overflow: hidden removed — it clipped card contents when zoomed. */
+  min-width: 0;
   animation: fadeUp 0.7s 0.15s ease both;
 }
 
+/* The decorative glow now clips itself to the card's rounded shape
+   (since .statsCard no longer uses overflow: hidden). */
 .statsCard::before {
   content: '';
   position: absolute;
@@ -174,6 +186,15 @@
   border-radius: 50%;
   filter: blur(20px);
   pointer-events: none;
+  /* clip-path keeps the glow inside the rounded card without clipping
+     the card's own content. */
+  clip-path: inset(0 round 20px);
+  z-index: 0;
+}
+
+.statsCard > * {
+  position: relative;
+  z-index: 1;
 }
 
 .statsHeader {
@@ -182,6 +203,12 @@
   gap: 14px;
   margin-bottom: 22px;
   position: relative;
+  min-width: 0;
+}
+
+.statsHeader > div:last-child {
+  min-width: 0;
+  flex: 1;
 }
 
 .statsIconBubble {
@@ -211,9 +238,18 @@
 
 .statsGrid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
   position: relative;
+}
+
+/* When the card gets narrow (e.g. high browser zoom or a narrow
+   viewport on a tall hero), fall back to a single column so the
+   tiles keep their padding without being clipped. */
+@media (max-width: 480px) {
+  .statsGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .statsTile {
@@ -221,6 +257,7 @@
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 14px 16px;
+  min-width: 0;
   transition: transform 0.18s ease, border-color 0.18s ease;
 }
 

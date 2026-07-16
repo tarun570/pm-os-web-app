@@ -309,23 +309,6 @@ export default function ProjectsPage() {
         <EmptyState onAdd={() => setShowUploadModal(true)} />
       ) : (
         <div className={styles.grid}>
-          {/* "Add" tile is always first in the grid so it's discoverable. */}
-          <button
-            type="button"
-            className={`${styles.card} ${styles.addCard}`}
-            onClick={() => setShowUploadModal(true)}
-          >
-            <div className={styles.addCardInner}>
-              <div className={styles.addCardIcon}>
-                <Plus size={24} />
-              </div>
-              <span className={styles.addCardTitle}>Add New Project</span>
-              <span className={styles.addCardSubtitle}>
-                Upload a new SOW to generate a project plan.
-              </span>
-            </div>
-          </button>
-
           {uploads.map((upload) => (
             <ProjectCard
               key={upload.id}

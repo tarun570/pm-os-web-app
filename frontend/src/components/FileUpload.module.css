@@ -159,6 +159,19 @@
   cursor: not-allowed;
 }
 
+.uploadingStatus {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 24px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #e8365d, #ff4d5a);
+  color: white;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .spin {
   animation: spin 0.8s linear infinite;
 }
@@ -223,7 +236,8 @@
   }
 
   .clearBtn,
-  .uploadBtn {
+  .uploadBtn,
+  .uploadingStatus {
     width: 100%;
   }
 }

@@ -63,8 +63,20 @@ export const FAQ_DATA = [
   {
     keywords: ['processing', 'wait', 'how long', 'time', 'pending'],
     answer:
-      "Most SOWs are processed in 1–3 minutes. The status on each upload card updates automatically — you'll see 'Processing' → 'Completed' (or 'Failed' with details).",
+      "On average, PM OS takes about 2 minutes to generate your PRD and sprint plan. Larger or more complex SOWs can take a bit longer — the exact time depends on the size and complexity of the document. The status on each upload card updates automatically: 'Processing' → 'Completed' (or 'Failed' with details).",
     followUps: ['History of uploads'],
+  },
+  {
+    keywords: ['file type', 'file types', 'supported', 'format', 'formats', 'what files', 'which files', 'accept', 'extension'],
+    answer:
+      "PM OS supports three file formats for SOW uploads: PDF (.pdf), Word (.docx), and plain text (.txt).export your SOW as PDF, DOCX, or TXT and try again.",
+    followUps: ['What is the max file size?', 'How do I upload a SOW?'],
+  },
+  {
+    keywords: ['max size', 'maximum size', 'file size', 'size limit', 'how large', '100mb', 'mb limit'],
+    answer:
+      "The maximum file size for a SOW upload is 100 MB. This is enforced by the server. If your file is larger, try compressing the PDF, removing embedded images, or splitting the document before uploading.",
+    followUps: ['What file types are supported?', 'How do I upload a SOW?'],
   },
   {
     keywords: ['privacy', 'secure', 'data', 'safe'],

@@ -2,7 +2,7 @@
 
 import React, { useState,useRef } from 'react'
 import { fileAPI } from '../api/auth'
-import { UploadCloud, FileText, AlertTriangle, X, Loader2 } from 'lucide-react'
+import { UploadCloud, AlertTriangle, Loader2 } from 'lucide-react'
 import styles from './FileUpload.module.css'
 
 export default function FileUpload({ onUploadSuccess }) {
@@ -43,7 +43,7 @@ export default function FileUpload({ onUploadSuccess }) {
 
   const validateAndSetFile = (file) => {
     setError('')
-    
+
     // Check file size (max 100MB)
     const maxSize = 100 * 1024 * 1024 // 100MB
     if (file.size > maxSize) {
@@ -59,10 +59,13 @@ export default function FileUpload({ onUploadSuccess }) {
     }
 
     setSelectedFile(file)
+    // Auto-start the upload as soon as a valid file is chosen
+    handleUpload(file)
   }
 
-  const handleUpload = async () => {
-    if (!selectedFile) {
+  const handleUpload = async (fileToUpload) => {
+    const file = fileToUpload || selectedFile
+    if (!file) {
       setError('Please select a file')
       return
     }
@@ -71,9 +74,9 @@ export default function FileUpload({ onUploadSuccess }) {
     setError('')
 
     try {
-      const response = await fileAPI.uploadFile(selectedFile)
+      const response = await fileAPI.uploadFile(file)
       
-      if (response.status === 201) {
+      if (response.status === 201 || response.status === 202) {
         const initialUpload = response.data.upload
         setError('')
 
@@ -179,7 +182,7 @@ export default function FileUpload({ onUploadSuccess }) {
       >
         <div className={styles.content}>
           <div className={styles.icon}>
-            <UploadCloud size={40} strokeWidth={1.8} />
+            <UploadCloud size={30} strokeWidth={1} />
           </div>
           <h3>Upload Your SOW</h3>
           <p>Drag and drop your file here or click to browse</p>
@@ -204,12 +207,13 @@ export default function FileUpload({ onUploadSuccess }) {
               {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
             </span>
           </div>
-          
+
           <div className={styles.actions}>
             <button
               className={styles.clearBtn}
               onClick={() => {
                 setSelectedFile(null)
+                setError('')
                 const fileInput = document.getElementById('file-input')
                 if (fileInput) fileInput.value = ''
               }}
@@ -218,21 +222,11 @@ export default function FileUpload({ onUploadSuccess }) {
               Clear
             </button>
 
-            <button
-              className={`${styles.uploadBtn} gradient-button`}
-              onClick={handleUpload}
-              disabled={isUploading}
-            >
-              {isUploading ? (
-                <>
-                  <Loader2 size={16} className={styles.spin} /> Uploading...
-                </>
-              ) : (
-                <>
-                  <FileText size={16} /> Upload & Process
-                </>
-              )}
-            </button>
+            {isUploading && (
+              <div className={styles.uploadingStatus}>
+                <Loader2 size={36} className={styles.spin} /> Uploading...
+              </div>
+            )}
           </div>
         </div>
       )}

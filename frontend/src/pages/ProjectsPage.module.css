@@ -412,60 +412,6 @@
   color: var(--muted);
 }
 
-/* ===== "Add New Project" card (always first in the grid) ===== */
-.addCard {
-  border-style: dashed;
-  border-color: rgba(232, 54, 93, 0.35);
-  background: linear-gradient(180deg, var(--card) 0%, var(--accent-light) 280%);
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  min-height: 220px;
-  color: var(--accent);
-  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease;
-}
-
-.addCard:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 30px rgba(232, 54, 93, 0.12);
-  border-color: var(--accent);
-  background: linear-gradient(180deg, var(--card) 0%, rgba(232, 54, 93, 0.08) 280%);
-}
-
-.addCardInner {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-}
-
-.addCardIcon {
-  width: 48px;
-  height: 48px;
-  border-radius: 14px;
-  background: linear-gradient(135deg, var(--accent), var(--accent2));
-  color: white;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 6px 18px rgba(232, 54, 93, 0.28);
-}
-
-.addCardTitle {
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--text);
-  font-family: 'Inter', sans-serif;
-  letter-spacing: -0.2px;
-}
-
-.addCardSubtitle {
-  font-size: 13px;
-  color: var(--muted);
-  max-width: 240px;
-  line-height: 1.5;
-}
-
 /* ===== Empty state (zero uploads) ===== */
 .emptyState {
   display: flex;
