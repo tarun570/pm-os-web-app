@@ -1,0 +1,170 @@
+# ==========================================
+# Python / Django
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+*.egg
+.eggs/
+build/
+dist/
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+*.pyo
+*.pyd
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Django
+backend/db.sqlite3
+backend/db.sqlite3-journal
+backend/db.sqlite3-shm
+backend/db.sqlite3-wal
+backend/staticfiles/
+backend/media/
+
+# Virtual environments
+backend/venv/
+backend/.venv/
+backend/env/
+backend/ENV/
+venv/
+.venv/
+env/
+ENV/
+
+# ==========================================
+# Node / React / Vite
+# ==========================================
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/build/
+frontend/.vite/
+frontend/coverage/
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+frontend/pnpm-debug.log*
+frontend/lerna-debug.log*
+
+# ==========================================
+# Environment files (NEVER commit secrets)
+# ==========================================
+.env
+.env.local
+.env.*.local
+.env.production
+.env.development
+backend/.env
+backend/.env.*
+frontend/.env
+frontend/.env.*
+!.env.example
+
+# ==========================================
+# IDE / Editor
+# ==========================================
+.idea/
+.vscode/
+*.swp
+*.swo
+*.swn
+*.sbm
+*~
+.sublime-project
+.sublime-workspace
+.vs/
+*.code-workspace
+.history/
+
+# ==========================================
+# OS files
+# ==========================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# ==========================================
+# Logs
+# ==========================================
+*.log
+logs/
+backend/logs/
+frontend/logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ==========================================
+# Misc / Cache
+# ==========================================
+*.local
+*.bak
+*.tmp
+*.temp
+*.swp
+.cache/
+.parcel-cache/
+.eslintcache
+.stylelintcache
+.mypy_cache/
+.ruff_cache/
+
+# ==========================================
+# Database
+# ==========================================
+*.db
+*.sqlite
+*.sqlite3
+*.sql
+*.pgsql
+
+# ==========================================
+# Certificates / Keys
+# ==========================================
+*.pem
+*.key
+*.crt
+*.cer
+*.p12
+secrets/
+
+# ==========================================
+# Project-specific (kept for reference)
+# ==========================================
+ARCHITECTURE.md
+COMPLETION_SUMMARY.md
+GOOGLE_OAUTH_SETUP.md
+IMPLEMENTATION_SUMMARY.md
+QUICK_START.md
+TESTING_GUIDE.md
+raw.txt
+backend/debug_drive.py
+backend/requirements_new.txt
+backend/requirements.txt.bak
+
+CLAUDE.md
+
+Capture.PNG
+AI Project Management OS (PM OS).pdf
+AI Email Follow-Up Automation Workflow using n8n.docx
+AI Backend Development for StuddyBuddyPro.xlsx
+
+backend/users/migrations/
+backend/users/tempCodeRunnerFile.py
+backend/raw_env.txt
