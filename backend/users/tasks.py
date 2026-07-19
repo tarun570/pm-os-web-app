@@ -198,13 +198,41 @@ def process_sow_upload(self, upload_id):
                     processing_result = result
 
                 file_upload.processing_result = processing_result
+                # n8n currently sends the PRD doc URL as `doc_link` (not
+                # `prd_url` / `prd_document`). Fall back through both
+                # names so the PRD extractor and the frontend's PRD chip
+                # can find it regardless of which n8n workflow version
+                # POSTed back. Mirrors the same fallback in
+                # views.py:webhook_callback.
                 file_upload.prd_document = (normalized_response.get('prd_url')
-                                            or normalized_response.get('prd_document'))
+                                            or normalized_response.get('prd_document')
+                                            or normalized_response.get('doc_link'))
                 file_upload.project_plan = normalized_response.get('project_plan')
                 file_upload.drive_folder_url = (normalized_response.get('drive_folder_url')
                                                 or normalized_response.get('folder_url'))
                 file_upload.mark_completed(processing_result)
                 print(f"{prefix}     ✓ FileUpload marked as completed")
+
+                # Best-effort PRD extraction on the sync path. The async
+                # path is covered by webhook_callback (which also calls
+                # extract_and_save_prd in a best-effort block). Failures
+                # here are logged but don't fail the worker — the upload
+                # is already marked completed, the user can always
+                # re-trigger via POST /uploads/{id}/refresh_prd/.
+                try:
+                    from users.prd_extractor import (
+                        extract_and_save_prd,
+                        PrdExtractError,
+                    )
+                    if file_upload.prd_document:
+                        extract_and_save_prd(file_upload)
+                        print(f"{prefix}     ✓ PRD extracted")
+                except PrdExtractError as exc:
+                    print(f"{prefix}     ⚠️  PRD extract skipped: {exc}")
+                except Exception as exc:
+                    import traceback
+                    print(f"{prefix}     ⚠️  PRD extract failed: {type(exc).__name__}: {exc}")
+                    print(traceback.format_exc())
 
                 workflow_id = normalized_response.get('workflow_id')
                 if workflow_id:

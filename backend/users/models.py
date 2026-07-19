@@ -171,6 +171,39 @@ class FileUpload(models.Model):
         self.save()
 
 
+class PRD(models.Model):
+    """Structured PRD content extracted from the Google Doc n8n generated.
+
+    n8n POSTs back the doc URL to webhook_callback; we fetch the doc
+    (Drive `files.export` under the existing drive.file scope) and persist
+    a parsed JSON representation so the chatbot / UI can read the PRD
+    without round-tripping through Google.
+
+    One PRD per FileUpload (OneToOne). Re-extraction is idempotent —
+    update_or_create inside a single transaction, mirroring the sprint-plan
+    import pattern in sheet_importer.populate_sprint_plan_from_sheet.
+    """
+    file_upload  = models.OneToOneField(
+        FileUpload, on_delete=models.CASCADE, related_name='prd'
+    )
+    prd_url      = models.URLField(max_length=2048)
+    # Shape: {
+    #   "title": "...",
+    #   "sections": [{"heading": "...", "level": 1, "text": "..."}, ...],
+    #   "extracted_at": "<iso8601>",
+    # }
+    content      = models.JSONField()
+    extracted_at = models.DateTimeField()
+    created_at   = models.DateTimeField(auto_now_add=True)
+    updated_at   = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['file_upload']
+
+    def __str__(self):
+        return f"PRD for upload {self.file_upload_id}"
+
+
 # ----------------------------------------------------------------------------
 # Sprint-plan data tables
 #

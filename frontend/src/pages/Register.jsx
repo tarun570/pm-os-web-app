@@ -7,8 +7,6 @@ export default function Register() {
   const [form, setForm] = useState({
     email: '',
     username: '',
-    first_name: '',
-    last_name: '',
     password: '',
     password_confirm: '',
   })
@@ -28,8 +26,6 @@ export default function Register() {
       await register(
         form.email,
         form.username,
-        form.first_name,
-        form.last_name,
         form.password,
         form.password_confirm
       )
@@ -76,16 +72,6 @@ export default function Register() {
               <div className={styles.formGroup}>
                 <label>Username</label>
                 <input name="username" value={form.username} onChange={onChange} required disabled={isLoading} />
-              </div>
-              <div style={{ display: 'flex', gap: 12 }}>
-                <div className={styles.formGroup} style={{ flex: 1 }}>
-                  <label>First name</label>
-                  <input name="first_name" value={form.first_name} onChange={onChange} disabled={isLoading} />
-                </div>
-                <div className={styles.formGroup} style={{ flex: 1 }}>
-                  <label>Last name</label>
-                  <input name="last_name" value={form.last_name} onChange={onChange} disabled={isLoading} />
-                </div>
               </div>
               <div className={styles.formGroup}>
                 <label>Password (min 8)</label>

@@ -4,6 +4,7 @@ import { GoogleOAuthProvider } from '@react-oauth/google'
 import { AuthProvider } from './context/AuthContext'
 import Login from './pages/Login'
 import Register from './pages/Register'
+import VerifyEmail from './pages/VerifyEmail'
 import OverviewPage from './pages/OverviewPage'
 import ProjectsPage from './pages/ProjectsPage'
 import ProjectDetailPage from './pages/ProjectDetailPage'
@@ -21,6 +22,9 @@ function App() {
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
+            {/* Email verification landing page — public so a user clicking the
+                link in their inbox can hit it without being logged in. */}
+            <Route path="/verify-email/:token" element={<VerifyEmail />} />
 
             {/* Authenticated shell — Sidebar + <Outlet /> + ChatPanel.
                 All post-login routes are nested under AppLayout. */}

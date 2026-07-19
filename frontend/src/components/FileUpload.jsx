@@ -53,10 +53,19 @@ export default function FileUpload({ onUploadSuccess }) {
       return
     }
 
-    // Check file type
-    const allowedTypes = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain']
+    // Check file type — n8n backend only accepts PDF SOWs.
+    const allowedTypes = ['application/pdf']
     if (!allowedTypes.includes(file.type)) {
-      setError('Only PDF, DOCX, and TXT files are allowed')
+      setError('Only PDF files are allowed')
+      return
+    }
+
+    // Belt-and-suspenders: some browsers report an empty `type` for drags.
+    // Fall back to the extension check so a .docx/.txt dropped in still
+    // gets rejected even if file.type slips through.
+    const fileName = (file.name || '').toLowerCase()
+    if (!fileName.endsWith('.pdf')) {
+      setError('Only PDF files are allowed')
       return
     }
 
@@ -173,15 +182,15 @@ export default function FileUpload({ onUploadSuccess }) {
           </div>
           <h3>Upload Your SOW</h3>
           <p>Drag and drop your file here or click to browse</p>
-          <p className={styles.fileTypes}>Supported: PDF, DOCX, TXT (Max 100MB)</p>
+          <p className={styles.fileTypes}>Supported: PDF only (Max 100MB)</p>
         </div>
 
         <input
-        ref={fileInputRef} 
+        ref={fileInputRef}
           id="file-input"
           type="file"
           onChange={handleFileSelect}
-          accept=".pdf,.docx,.txt"
+          accept="application/pdf,.pdf"
           className={styles.fileInput}
         />
       </div>

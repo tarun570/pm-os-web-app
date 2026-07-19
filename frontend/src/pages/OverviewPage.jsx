@@ -7,7 +7,6 @@ import {
   Zap,
   ListChecks,
   LayoutDashboard,
-  Loader2,
   Sparkles,
   FilePlus2,
 } from 'lucide-react'
@@ -16,22 +15,28 @@ import styles from './OverviewPage.module.css'
 export default function OverviewPage() {
   const { user } = useAuth()
   const [uploads, setUploads] = useState([])
-  const [loading, setLoading] = useState(true)
   const [showUpload, setShowUpload] = useState(false)
 
-  // Fetch on mount. If the user has no uploads, we render the empty
-  // state and skip the workspace card entirely.
+  // Fetch on mount. We optimistically assume there are no projects and
+  // render the empty state immediately — the page is usable the moment
+  // the React tree mounts. When the API responds, we only swap to the
+  // workspace card if the user actually has uploads. This avoids
+  // blocking the whole hero on a network round-trip that, for new
+  // users, is just going to return [].
+  //
+  // We hit the dedicated /summary/ endpoint (not /list_uploads/) so the
+  // dashboard doesn't pull the heavy `sow_text` TextField or the full
+  // `processing_result` JSON for every row — the workspace card only
+  // needs counts + status + drive_folder_url.
   useEffect(() => {
     let cancelled = false
     const load = async () => {
       try {
-        const res = await fileAPI.listUploads()
-        if (!cancelled) setUploads(res.data || [])
+        const res = await fileAPI.getUploadsSummary()
+        if (!cancelled) setUploads(res.data?.uploads || [])
       } catch (err) {
-        console.error('Failed to fetch uploads:', err)
+        console.error('Failed to fetch uploads summary:', err)
         if (!cancelled) setUploads([])
-      } finally {
-        if (!cancelled) setLoading(false)
       }
     }
     load()
@@ -96,24 +101,13 @@ export default function OverviewPage() {
           </div>
         </div>
 
-        {/* ===== Right column: workspace summary OR empty state ===== */}
-        {loading ? (
-          <div className={styles.workspaceCard} aria-busy="true">
-            <div className={styles.workspaceHeader}>
-              <div className={styles.workspaceIconBubble}>
-                <LayoutDashboard size={20} />
-              </div>
-              <div>
-                <h3>Your Workspace</h3>
-                <p>Loading your projects…</p>
-              </div>
-            </div>
-            <div className={styles.workspaceLoadingRow}>
-              <Loader2 size={16} className={styles.spin} />
-              <span>Fetching uploads</span>
-            </div>
-          </div>
-        ) : totalCount === 0 ? (
+        {/* ===== Right column: workspace summary OR empty state =====
+            Render the empty state optimistically. We only show the
+            loading skeleton if we already know the user has uploads
+            (we'd rather keep their workspace card stable than flicker
+            it to "no projects" and back). The first paint never
+            blocks on the network. */}
+        {totalCount === 0 ? (
           <div className={`${styles.workspaceCard} ${styles.workspaceCardEmpty}`}>
             <div className={styles.workspaceHeader}>
               <div className={styles.workspaceIconBubble}>
@@ -130,7 +124,7 @@ export default function OverviewPage() {
             <div className={styles.emptySteps}>
               <div className={styles.emptyStep}>
                 <span className={styles.emptyStepNum}>1</span>
-                <span>Upload a PDF, DOCX, or TXT SOW</span>
+                <span>Upload a PDF SOW</span>
               </div>
               <div className={styles.emptyStep}>
                 <span className={styles.emptyStepNum}>2</span>
@@ -205,7 +199,7 @@ export default function OverviewPage() {
             </div>
             <div>
               <h2>Upload a new SOW</h2>
-              <p>Drop a PDF, DOCX, or TXT and PM OS will generate a complete plan.</p>
+              <p>Drop a PDF PM OS will generate a complete plan.</p>
             </div>
           </div>
           <FileUpload onUploadSuccess={handleUploadSuccess} />

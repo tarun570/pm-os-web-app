@@ -24,12 +24,10 @@ api.interceptors.request.use((config) => {
 })
 
 export const authAPI = {
-  register: (email, username, firstName, lastName, password, passwordConfirm) =>
+  register: (email, username, password, passwordConfirm) =>
     api.post('/users/register/', {
       email,
       username,
-      first_name: firstName,
-      last_name: lastName,
       password,
       password_confirm: passwordConfirm,
     }),
@@ -77,6 +75,13 @@ export const fileAPI = {
   listUploads: () =>
     api.get('/uploads/list_uploads/'),
 
+  // Lightweight summary for the dashboard workspace card. Skips the
+  // heavy `sow_text` TextField and `processing_result` JSON that
+  // listUploads returns, so a user with N prior uploads pulls a tiny
+  // payload instead of N × hundreds-of-KB. Returns { uploads, counts }.
+  getUploadsSummary: () =>
+    api.get('/uploads/summary/'),
+
   getUpload: (uploadId) =>
     api.get(`/uploads/${uploadId}/`),
 
@@ -122,6 +127,17 @@ export const fileAPI = {
   // matches downloadCsv above.
   cancelExport: (uploadId, type) =>
     api.post(`/uploads/${uploadId}/cancel_export/?type=${type}`),
+
+  // PRD content — extracted from the Google Doc n8n created. The doc URL
+  // itself is still on FileUpload.prd_document; these endpoints return
+  // the parsed JSON ({title, sections, extracted_at}). The extraction is
+  // best-effort on the backend — if it failed, getPrd returns 404 and
+  // refreshPrd re-runs it (mirrors resync_sheet_plan for the sprint plan).
+  getPrd: (uploadId) =>
+    api.get(`/uploads/${uploadId}/prd/`),
+
+  refreshPrd: (uploadId) =>
+    api.post(`/uploads/${uploadId}/refresh_prd/`),
 }
 
 export default api

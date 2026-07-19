@@ -2,7 +2,7 @@ from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from users.models import (
     EmailVerificationToken, GoogleOAuthToken, FileUpload,
-    UserStory, Resource, SprintPlanRow,
+    UserStory, Resource, SprintPlanRow, PRD,
 )
 import secrets
 from django.utils import timezone
@@ -40,7 +40,7 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ('email', 'username', 'first_name', 'last_name', 'password', 'password_confirm')
+        fields = ('email', 'username', 'password', 'password_confirm')
 
     def validate(self, data):
         if data['password'] != data['password_confirm']:
@@ -80,6 +80,30 @@ class TokenSerializer(serializers.Serializer):
     refresh = serializers.CharField()
     access = serializers.CharField()
     user = UserSerializer()
+
+
+class FileUploadSummarySerializer(serializers.ModelSerializer):
+    """Lightweight projection of FileUpload for list endpoints.
+
+    Used by `GET /api/uploads/list_uploads/` to power the dashboard's
+    workspace card. Skips the heavy `sow_text` TextField, the full
+    `processing_result` JSON, and the CSV file fields — those are
+    still available on the per-row detail endpoint.
+
+    The per-row fields we DO return (id, file_name, status,
+    drive_folder_url, timestamps) are small and indexed, so a user
+    with N prior uploads produces a response that scales with N rows
+    rather than N × hundreds-of-KB.
+    """
+    class Meta:
+        model = FileUpload
+        fields = (
+            'id', 'file_name', 'file_size', 'file_type', 'status',
+            'drive_folder_url',
+            'csv_jira_status', 'csv_trello_status',
+            'uploaded_at', 'processing_started_at', 'completed_at',
+        )
+        read_only_fields = fields
 
 
 class FileUploadSerializer(serializers.ModelSerializer):
@@ -170,3 +194,19 @@ class SprintPlanRowSerializer(serializers.ModelSerializer):
             'id', 'user_story_detail', 'resources_detail',
             'created_at', 'updated_at',
         )
+
+
+class PRDSerializer(serializers.ModelSerializer):
+    """Read-only view of an extracted PRD.
+
+    All fields are read-only — PRD rows are written by the webhook_callback
+    / Celery task pipeline (best-effort), never by user POST. The frontend
+    (and chatbot) hit the `prd` action on FileUploadViewSet to read this.
+    """
+    class Meta:
+        model = PRD
+        fields = (
+            'id', 'file_upload', 'prd_url', 'content',
+            'extracted_at', 'created_at', 'updated_at',
+        )
+        read_only_fields = fields

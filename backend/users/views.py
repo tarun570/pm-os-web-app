@@ -33,12 +33,14 @@ except (AttributeError, ValueError):
 
 from users import google_drive
 from users.tasks import process_sow_upload
-from users.models import EmailVerificationToken, GoogleOAuthToken, FileUpload, UserStory, Resource, SprintPlanRow
+from users.models import EmailVerificationToken, GoogleOAuthToken, FileUpload, UserStory, Resource, SprintPlanRow, PRD
 from users.serializers import (
     UserSerializer, RegisterSerializer, LoginSerializer,
     VerifyEmailSerializer, TokenSerializer, GoogleLoginSerializer,
-    FileUploadSerializer, FileUploadCreateSerializer,
+    FileUploadSerializer, FileUploadSummarySerializer,
+    FileUploadCreateSerializer,
     UserStorySerializer, ResourceSerializer, SprintPlanRowSerializer,
+    PRDSerializer,
 )
 from users.text_extraction import extract_text
 
@@ -64,7 +66,16 @@ class UserViewSet(viewsets.ModelViewSet):
         serializer = RegisterSerializer(data=request.data)
         if serializer.is_valid():
             user = serializer.save()
-            
+
+            # DEV ONLY: auto-verify so you don't have to click email links
+            # during development. settings.DEBUG is True when running
+            # `manage.py runserver` with DEBUG=True in backend/.env — it
+            # flips to False in production, so this block is a no-op there.
+            if settings.DEBUG:
+                user.is_verified = True
+                user.is_active = True
+                user.save()
+
             # Get verification token
             token_obj = EmailVerificationToken.objects.get(user=user)
             
@@ -615,10 +626,49 @@ class FileUploadViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
     def list_uploads(self, request):
-        """Get all files uploaded by the user"""
+        """Get all files uploaded by the user.
+
+        Returns the full FileUpload rows (including `sow_text`,
+        `processing_result`, etc.) — ProjectsPage reads these to render
+        project cards with links, export buttons, error messages, etc.
+
+        For the lighter dashboard summary (just counts + drive status),
+        use `GET /api/uploads/summary/`.
+        """
         uploads = self.get_queryset().order_by('-uploaded_at')
         serializer = FileUploadSerializer(uploads, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
+    def summary(self, request):
+        """Lightweight summary for the OverviewPage workspace card.
+
+        Returns a list of slim row projections (id, file_name, status,
+        drive_folder_url, timestamps) and the total/completed/processing
+        counts in a single round-trip. Skips `sow_text` (heavy TextField),
+        `processing_result` (potentially large JSON), and the CSV file
+        fields — those are loaded on demand from the per-row detail
+        endpoint or the project detail page.
+
+        For a new user with no uploads, the response is tiny and the
+        OverviewPage can render the empty state immediately.
+        """
+        qs = self.get_queryset().order_by('-uploaded_at')
+        uploads = list(qs)
+        summary_rows = FileUploadSummarySerializer(uploads, many=True).data
+        completed = sum(1 for u in uploads if u.status == 'completed')
+        processing = sum(1 for u in uploads if u.status == 'processing')
+        return Response(
+            {
+                'uploads': summary_rows,
+                'counts': {
+                    'total': len(uploads),
+                    'completed': completed,
+                    'processing': processing,
+                },
+            },
+            status=status.HTTP_200_OK,
+        )
 
     @action(detail=True, methods=['get'], permission_classes=[IsAuthenticated])
     def get_text(self, request, pk=None):
@@ -790,6 +840,87 @@ class FileUploadViewSet(viewsets.ModelViewSet):
             status=status.HTTP_200_OK,
         )
 
+    @action(detail=True, methods=['get'], permission_classes=[IsAuthenticated])
+    def prd(self, request, pk=None):
+        """GET /api/uploads/{id}/prd/
+
+        Returns the previously-extracted PRD JSON for this upload. The
+        PRD is populated by webhook_callback (or process_sow_upload's
+        sync path) right after n8n returns the doc URL — see
+        users.prd_extractor.extract_and_save_prd. 404 if the upload is
+        missing OR if the PRD hasn't been extracted yet (e.g. n8n
+        didn't return a prd_url, or extraction failed and the user
+        hasn't hit refresh_prd yet).
+        """
+        try:
+            file_upload = self.get_queryset().get(pk=pk)
+        except FileUpload.DoesNotExist:
+            return Response({'error': 'Upload not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            prd_row = file_upload.prd
+        except PRD.DoesNotExist:
+            return Response(
+                {
+                    'error': 'PRD not yet extracted for this upload',
+                    'prd_document': file_upload.prd_document,
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        return Response(PRDSerializer(prd_row).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def refresh_prd(self, request, pk=None):
+        """POST /api/uploads/{id}/refresh_prd/
+
+        Manual re-trigger for PRD extraction. Use when the auto-extract
+        in webhook_callback / process_sow_upload failed (logged but the
+        upload is still marked completed) OR when the user edited the
+        doc in Drive and wants the chatbot to see the updated content.
+
+        Mirrors the contract of resync_sheet_plan above. Returns the
+        new content inline so the caller can update without a second
+        round-trip.
+        """
+        from users.prd_extractor import extract_and_save_prd, PrdExtractError
+
+        try:
+            file_upload = self.get_queryset().get(pk=pk)
+        except FileUpload.DoesNotExist:
+            return Response({'error': 'Upload not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        if not file_upload.prd_document:
+            return Response(
+                {
+                    'error': 'No prd_document URL on this upload — nothing to extract',
+                    'code': 'no_prd_url',
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            content = extract_and_save_prd(file_upload)
+        except PrdExtractError as exc:
+            return Response(
+                {'error': str(exc), 'code': 'prd_extract_failed'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except google_drive.GoogleDriveNotConnected as exc:
+            return Response(
+                {'error': str(exc), 'code': 'gdrive_not_connected'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(
+            {
+                'message': 'PRD refreshed',
+                'content': content,
+                'upload': FileUploadSerializer(file_upload).data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
     @action(detail=False, methods=['post'], permission_classes=[AllowAny])
     def webhook_callback(self, request):
         """Receive results from n8n webhook"""
@@ -929,14 +1060,23 @@ class FileUploadViewSet(viewsets.ModelViewSet):
                 print(f"    ⚠️  MARKING AS FAILED")
                 msg = payload_error or payload.get('message') or share_error or 'Unknown error'
                 print(f"    Error message: {msg}")
-                
+
                 if isinstance(processing_result, dict):
                     processing_result['share_error'] = msg
                     if share_error:
                         processing_result['share_with_status'] = 'failed'
 
                 file_upload.processing_result = processing_result
-                file_upload.prd_document = payload.get('prd_url') or payload.get('prd_document')
+                # n8n currently sends the PRD doc URL as `doc_link` (not
+                # `prd_url` / `prd_document`). Fall back through both
+                # names so the PRD extractor and the frontend's PRD chip
+                # can find it regardless of which n8n workflow version
+                # POSTed back.
+                file_upload.prd_document = (
+                    payload.get('prd_url')
+                    or payload.get('prd_document')
+                    or payload.get('doc_link')
+                )
                 file_upload.project_plan = payload.get('project_plan')
                 if sheet_id:
                     file_upload.sheet_id = sheet_id
@@ -953,7 +1093,15 @@ class FileUploadViewSet(viewsets.ModelViewSet):
 
             print(f"    ✅ NO ERRORS - MARKING AS COMPLETED")
             file_upload.processing_result = processing_result
-            file_upload.prd_document = payload.get('prd_url') or payload.get('prd_document')
+            # n8n currently sends the PRD doc URL as `doc_link` (not
+            # `prd_url` / `prd_document`). Fall back through both names
+            # so the PRD extractor and the frontend's PRD chip can find
+            # it regardless of which n8n workflow version POSTed back.
+            file_upload.prd_document = (
+                payload.get('prd_url')
+                or payload.get('prd_document')
+                or payload.get('doc_link')
+            )
             file_upload.project_plan = payload.get('project_plan')
             file_upload.drive_folder_url = payload.get('drive_folder_url') or payload.get('folder_url')
             if sheet_id:
@@ -982,6 +1130,27 @@ class FileUploadViewSet(viewsets.ModelViewSet):
             except Exception as exc:
                 import traceback
                 print(f"    ⚠️  Sprint plan import failed: {type(exc).__name__}: {exc}")
+                print(traceback.format_exc())
+
+            # Best-effort PRD extraction: fetch the Google Doc n8n returned
+            # (file_upload.prd_document was set above) and persist a parsed
+            # JSON representation to the PRD table. Same fail-soft contract
+            # as the sprint-plan import above — the user's links are still
+            # valid even if this fails. They can manually re-trigger via
+            # POST /uploads/{id}/refresh_prd/.
+            try:
+                from users.prd_extractor import (
+                    extract_and_save_prd,
+                    PrdExtractError,
+                )
+                if file_upload.prd_document:
+                    extract_and_save_prd(file_upload)
+                    print(f"    ✓ PRD extracted from {file_upload.prd_document}")
+            except PrdExtractError as exc:
+                print(f"    ⚠️  PRD extract skipped: {exc}")
+            except Exception as exc:
+                import traceback
+                print(f"    ⚠️  PRD extract failed: {type(exc).__name__}: {exc}")
                 print(traceback.format_exc())
 
             serialized_upload = FileUploadSerializer(file_upload).data
