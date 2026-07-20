@@ -4,7 +4,7 @@ from django.contrib.auth.admin import UserAdmin
 from django.contrib.admin.forms import AdminAuthenticationForm
 from users.models import (
     CustomUser, EmailVerificationToken, GoogleOAuthToken, FileUpload,
-    UserStory, Resource, SprintPlanRow,
+    UserStory, Resource, SprintPlanRow,PRD
 )
 
 
@@ -174,6 +174,9 @@ class SprintPlanRowAdmin(admin.ModelAdmin):
     list_per_page = 50
 
 
+class PRDAdmin(admin.ModelAdmin):
+    list_display = ("file_upload","prd_url","content","extracted_at")
+
 admin.site.register(CustomUser, CustomUserAdmin)
 admin.site.register(EmailVerificationToken)
 admin.site.register(GoogleOAuthToken)
@@ -181,6 +184,7 @@ admin.site.register(FileUpload, FileUploadAdmin)
 admin.site.register(UserStory, UserStoryAdmin)
 admin.site.register(Resource, ResourceAdmin)
 admin.site.register(SprintPlanRow, SprintPlanRowAdmin)
+admin.site.register(PRD , PRDAdmin)
 
 # Replace Django's default admin login form with one that accepts email OR
 # username. See `EmailOrUsernameAuthenticationForm` above for the rationale.

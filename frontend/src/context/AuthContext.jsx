@@ -33,11 +33,11 @@ export const AuthProvider = ({ children }) => {
     }
   }
 
-  const register = async (email, username, firstName, lastName, password, passwordConfirm) => {
+  const register = async (email, username, password, passwordConfirm) => {
     try {
       setLoading(true)
       setError(null)
-      const response = await authAPI.register(email, username, firstName, lastName, password, passwordConfirm)
+      const response = await authAPI.register(email, username, password, passwordConfirm)
       return response.data
     } catch (err) {
       const errorMessage = err.response?.data?.message || err.message || 'Registration failed'

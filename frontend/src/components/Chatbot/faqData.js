@@ -7,9 +7,9 @@
 
 export const FAQ_DATA = [
   {
-    keywords: ['upload', 'sow', 'file', 'document', 'pdf', 'docx', 'txt'],
+    keywords: ['upload', 'sow', 'file', 'document', 'pdf'],
     answer:
-      "To upload a SOW, click the 'Upload Your First SOW' button on the dashboard, then drag-and-drop or browse for a PDF, DOCX, or TXT file (max 100 MB). Make sure you've connected Google Drive first.",
+      "To upload a SOW, click the 'Upload Your First SOW' button on the dashboard, then drag-and-drop or browse for a PDF file (max 100 MB). Make sure you've connected Google Drive first.",
     followUps: ['Connect Google Drive', 'What does PM OS generate?'],
   },
   {
@@ -69,7 +69,7 @@ export const FAQ_DATA = [
   {
     keywords: ['file type', 'file types', 'supported', 'format', 'formats', 'what files', 'which files', 'accept', 'extension'],
     answer:
-      "PM OS supports three file formats for SOW uploads: PDF (.pdf), Word (.docx), and plain text (.txt).export your SOW as PDF, DOCX, or TXT and try again.",
+      "PM OS only accepts PDF files for SOW uploads. Please export your SOW as PDF and try again.",
     followUps: ['What is the max file size?', 'How do I upload a SOW?'],
   },
   {

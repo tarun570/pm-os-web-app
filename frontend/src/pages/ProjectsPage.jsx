@@ -164,10 +164,17 @@ export default function ProjectsPage() {
   useEffect(() => {
     if (uploads.length === 0) return
 
-    const processingIds = uploads.filter((u) => u.status === 'processing').map((u) => u.id)
+    // Poll any row that hasn't finished yet — both 'pending' (just
+    // created, waiting for n8n to pick it up) and 'processing' (n8n
+    // is working on it). Without 'pending' here, a freshly-created
+    // row sits stuck on "Pending" until the user manually refreshes,
+    // because the poller was never started for it.
+    const watchIds = uploads
+      .filter((u) => u.status === 'processing' || u.status === 'pending')
+      .map((u) => u.id)
 
-    // Start a poller for each processing row that doesn't already have one.
-    processingIds.forEach((id) => {
+    // Start a poller for each un-finished row that doesn't already have one.
+    watchIds.forEach((id) => {
       if (pollersRef.current[id]) return
 
       const state = { active: true, attempts: 0 }
@@ -200,11 +207,11 @@ export default function ProjectsPage() {
       state.timer = setTimeout(tick, 2000)
     })
 
-    // Mark any pollers whose row is no longer in `processing` as inactive.
+    // Mark any pollers whose row is no longer pending/processing as inactive.
     Object.keys(pollersRef.current).forEach((idStr) => {
       const id = Number(idStr)
-      const stillProcessing = processingIds.includes(id)
-      if (!stillProcessing && pollersRef.current[id]) {
+      const stillWatching = watchIds.includes(id)
+      if (!stillWatching && pollersRef.current[id]) {
         pollersRef.current[id].active = false
         if (pollersRef.current[id].timer) clearTimeout(pollersRef.current[id].timer)
         pollersRef.current[id] = null
@@ -477,18 +484,6 @@ function ProjectCard({ upload, ownerName, onRefresh, onDelete, isDeleting = fals
               title="Open in Google Drive"
             >
               <FolderOpen size={12} /> Drive
-              <ExternalLink size={10} />
-            </a>
-          )}
-          {upload.prd_document && (
-            <a
-              href={upload.prd_document}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={styles.quickLinkChip}
-              title="Open PRD"
-            >
-              <FileText size={12} /> PRD
               <ExternalLink size={10} />
             </a>
           )}
