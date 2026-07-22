@@ -155,10 +155,12 @@ class UserStorySerializer(serializers.ModelSerializer):
     class Meta:
         model = UserStory
         fields = (
-            'id', 'project_name', 'user_story',
+            'id', 'project_name', 'user_story', 'us_id',
             'created_at', 'updated_at',
         )
-        read_only_fields = ('id', 'created_at', 'updated_at')
+        # us_id is populated exclusively by the importer — never by
+        # user POST/PATCH. read-only keeps the API contract honest.
+        read_only_fields = ('id', 'us_id', 'created_at', 'updated_at')
 
 
 class ResourceSerializer(serializers.ModelSerializer):
@@ -184,14 +186,20 @@ class SprintPlanRowSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'project_name',
             'user_story', 'user_story_detail',
+            'user_story_text',
             'us_id', 'task',
             'resources', 'resources_detail', 'resource_name',
             'start_date', 'end_date', 'est_hours',
             'sprint', 'priority', 'status',
             'created_at', 'updated_at',
         )
+        # user_story_text is defensive read-only — the importer is the
+        # only writer, and no view mutates SprintPlanRow today. Marking
+        # it read-only prevents accidental client mutation if a future
+        # endpoint starts accepting PATCH.
         read_only_fields = (
             'id', 'user_story_detail', 'resources_detail',
+            'user_story_text',
             'created_at', 'updated_at',
         )
 

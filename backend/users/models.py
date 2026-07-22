@@ -231,14 +231,22 @@ class UserStory(models.Model):
     """One row from the UserStories sub-sheet.
 
     The sheet has two columns: ProjectName, UserStories (the "As a user, I
-    want to..." sentence). We don't synthesize a US_ID here — that's a label
-    that only lives on the Sprint Plan sub-sheet, keyed by user_story text.
+    want to..." sentence).
+
+    `us_id` is backfilled by sheet_importer after SprintPlanRow import by
+    joining on `user_story` text. The label itself only lives on the Sprint
+    Plan sub-sheet — we mirror it here so the chatbot can address a story
+    by its `US-N` label (e.g. `GET /uploads/{id}/user_stories/?us_id=US-3`).
+    Read-only from the client's perspective (the importer is the only
+    writer). Nullable so legacy rows and stories with no matching Sprint
+    Plan row don't fail validation.
     """
     file_upload  = models.ForeignKey(
         FileUpload, on_delete=models.CASCADE, related_name='user_stories'
     )
     project_name = models.CharField(max_length=255, db_index=True)
     user_story   = models.TextField()
+    us_id        = models.CharField(max_length=50, blank=True, null=True, db_index=True)
 
     created_at   = models.DateTimeField(auto_now_add=True)
     updated_at   = models.DateTimeField(auto_now=True)
@@ -247,6 +255,7 @@ class UserStory(models.Model):
         ordering = ['file_upload', 'id']
         indexes = [
             models.Index(fields=['file_upload', 'project_name']),
+            models.Index(fields=['file_upload', 'us_id']),
         ]
 
     def __str__(self):
@@ -305,6 +314,12 @@ class SprintPlanRow(models.Model):
         UserStory, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='sprint_plan_rows',
     )
+    # Raw text from the sheet's UserStory cell, persisted regardless of
+    # whether the FK resolution succeeded. The chatbot reads this when
+    # `user_story` (FK) is NULL — e.g. whitespace/casing drift between
+    # n8n's sheet writer and the UserStories sub-sheet. Nullable so
+    # legacy rows (pre-migration) remain valid.
+    user_story_text = models.TextField(null=True, blank=True)
     us_id          = models.CharField(max_length=50, db_index=True)
 
     task           = models.TextField()

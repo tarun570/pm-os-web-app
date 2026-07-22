@@ -44,9 +44,9 @@ from users.models import FileUpload, Resource, SprintPlanRow, UserStory
 # Sub-sheet names as written by the n8n workflow. These are the tab titles
 # in the Google Sheet. If n8n renames them, update here AND in the n8n
 # workflow so they stay in sync.
-USER_STORIES_TAB = "UserStories"
-RESOURCES_TAB = "Resources"
-SPRINT_PLAN_TAB = "Sprint Plan"
+USER_STORIES_TAB = "User_Stories"
+RESOURCES_TAB = "Resource"
+SPRINT_PLAN_TAB = "Sprint_Plan"
 
 # Map: sheet header (lowercased) → field name on the model.
 # Add entries here if the sheet ever grows a new column.
@@ -317,6 +317,11 @@ def populate_sprint_plan_from_sheet(file_upload: FileUpload) -> dict:
                     file_upload=file_upload,
                     project_name=p.get("project_name", ""),
                     user_story=us_by_text.get(us_text),
+                    # Persist the raw sheet cell even when FK resolution
+                    # fails — the chatbot reads this when user_story (FK)
+                    # is NULL. Idempotent on re-run because bulk_create
+                    # below replaces the row wholesale.
+                    user_story_text=us_text,
                     us_id=str(p.get("us_id") or "").strip(),
                     task=p.get("task", ""),
                     resources=res_by_name.get(r_name),
@@ -329,6 +334,32 @@ def populate_sprint_plan_from_sheet(file_upload: FileUpload) -> dict:
                     status=p.get("status", ""),
                 ))
             SprintPlanRow.objects.bulk_create(sp_rows)
+
+        # 4. us_id backfill on UserStory. Sprint Plan carries the
+        #    canonical `US-N` label keyed by user_story text; we mirror
+        #    that label back onto the UserStory row so the chatbot can
+        #    address a story by label (e.g. ?us_id=US-3) instead of
+        #    fuzzy-joining on text. If the same text maps to multiple
+        #    us_ids, take the first and log a warning.
+        if sprint_plan_payloads:
+            from collections import defaultdict
+            text_to_usids: dict[str, list[str]] = defaultdict(list)
+            for p in sprint_plan_payloads:
+                text = (p.get("user_story_text") or "").strip()
+                usid = str(p.get("us_id") or "").strip()
+                if text and usid and usid not in text_to_usids[text]:
+                    text_to_usids[text].append(usid)
+
+            for text, usids in text_to_usids.items():
+                if len(usids) > 1:
+                    print(
+                        f"[SHEET IMPORT] ⚠️  upload={file_upload.id} "
+                        f"user_story text maps to multiple us_ids "
+                        f"{usids!r}; using first ({usids[0]!r})"
+                    )
+                UserStory.objects.filter(
+                    file_upload=file_upload, user_story=text,
+                ).update(us_id=usids[0])
 
     counts = {
         "user_stories": len(user_story_payloads),

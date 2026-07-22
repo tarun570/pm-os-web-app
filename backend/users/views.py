@@ -749,8 +749,11 @@ class FileUploadViewSet(viewsets.ModelViewSet):
     def user_stories(self, request, pk=None):
         """GET /api/uploads/{id}/user_stories/
 
-        Optional query params (all substring matches, case-insensitive):
-          ?project_name=AI%20Project
+        Optional query params:
+          ?project_name=AI%20Project   (icontains substring match)
+          ?us_id=US-3                  (exact match — preferred for the
+                                       chatbot so ?us_id=US doesn't
+                                       accidentally match US-10..19)
         """
         try:
             file_upload = self.get_queryset().get(pk=pk)
@@ -761,6 +764,12 @@ class FileUploadViewSet(viewsets.ModelViewSet):
         project_name = request.query_params.get('project_name')
         if project_name:
             qs = qs.filter(project_name__icontains=project_name)
+        # Exact match (not __icontains) so ?us_id=US returns nothing and
+        # ?us_id=US-3 doesn't return US-30, US-31, etc. The field is
+        # short and indexed; equality is the right lookup.
+        us_id = request.query_params.get('us_id')
+        if us_id:
+            qs = qs.filter(us_id=us_id)
         return Response(UserStorySerializer(qs, many=True).data)
 
     @action(detail=True, methods=['get'], permission_classes=[IsAuthenticated])
