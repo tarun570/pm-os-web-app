@@ -19,10 +19,10 @@ import styles from './Sidebar.module.css'
 // we can smooth-scroll to it and observe it for the active highlight.
 const NAV_ITEMS = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
-  // { id: 'upload', label: 'Upload SOW', icon: Upload },
-  // { id: 'projects', label: 'Project Details', icon: ListChecks },
+  { id: 'upload', label: 'Add New Project', icon: Upload },
+  { id: 'projects', label: 'Project Details', icon: ListChecks },
   // { id: 'files', label: 'Files', icon: Files },
-  // { id: 'drive', label: 'Google Drive', icon: Folder },
+  { id: 'drive', label: 'Google Drive', icon: Folder },
   // { id: 'integrations', label: 'Integrations', icon: Plug },
   // { id: 'account', label: 'Your Account', icon: UserCircle2 },
 ]

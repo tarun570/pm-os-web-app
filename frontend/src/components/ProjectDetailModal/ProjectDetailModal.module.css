@@ -1,0 +1,338 @@
+/* Full-screen overlay (the dark backdrop). Sits above everything else. */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 17, 23, 0.55);
+  backdrop-filter: blur(4px);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  animation: overlayIn 0.18s ease-out;
+}
+
+@keyframes overlayIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Centered panel that holds the modal. Sized for desktop; goes full-
+   bleed on small screens. */
+.panel {
+  position: relative;
+  background: var(--card, #ffffff);
+  border-radius: 20px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.3);
+  width: 100%;
+  max-width: 1400px;
+  height: calc(100vh - 48px);
+  max-height: 900px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: panelIn 0.22s ease-out;
+}
+
+@keyframes panelIn {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* Header strip: project name, status pill, back/close buttons. */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border, #e5e7eb);
+  background: var(--surface, #f8f9fc);
+  flex-shrink: 0;
+}
+
+.headerLeft {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.headerRight {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.backBtn {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: white;
+  border: 1px solid var(--border, #e5e7eb);
+  color: var(--text2, #4b5563);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.backBtn:hover {
+  border-color: var(--accent, #e8365d);
+  color: var(--accent, #e8365d);
+}
+
+.headerTitleBlock {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.headerTitle {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text, #111827);
+  margin: 0;
+  letter-spacing: -0.3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 480px;
+}
+
+.headerMeta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.headerStatus {
+  font-size: 12px;
+  color: var(--muted, #6b7280);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.statusPill {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 100px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.status_completed {
+  background: rgba(0, 168, 107, 0.12);
+  color: #00875a;
+}
+
+.status_processing {
+  background: rgba(99, 102, 241, 0.12);
+  color: #4338ca;
+}
+
+.status_pending {
+  background: rgba(245, 158, 11, 0.14);
+  color: #b45309;
+}
+
+.status_failed {
+  background: rgba(239, 68, 68, 0.12);
+  color: #b91c1c;
+}
+
+.closeBtn {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: white;
+  border: 1px solid var(--border, #e5e7eb);
+  color: var(--text2, #4b5563);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.closeBtn:hover {
+  border-color: #ef4444;
+  color: #ef4444;
+  background: #fef2f2;
+}
+
+/* Body — 3-column flex row: sidebar | center | chat column. */
+.body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: row;
+  background: var(--surface, #f8f9fc);
+}
+
+/* Left sidebar — vertical section nav. */
+.sidebar {
+  width: 200px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 10px;
+  background: white;
+  border-right: 1px solid var(--border, #e5e7eb);
+  overflow-y: auto;
+}
+
+/* Sidebar button — full-width, left-aligned, icon + label inline. */
+.tabBtn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: 8px;
+  background: transparent;
+  border: none;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text2, #4b5563);
+  cursor: pointer;
+  transition: all 0.15s;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.tabBtn:hover {
+  background: var(--surface, #f8f9fc);
+  color: var(--text, #111827);
+}
+
+.tabBtnActive {
+  background: rgba(232, 54, 93, 0.1);
+  color: var(--accent, #e8365d);
+  border-left: 3px solid var(--accent, #e8365d);
+  padding-left: 9px; /* compensate for the left border so text doesn't shift */
+}
+
+.tabBtnActive:hover {
+  background: rgba(232, 54, 93, 0.14);
+}
+
+/* Center column — hosts the active section's body. */
+.center {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface, #f8f9fc);
+  overflow: hidden;
+}
+
+/* Tab panel — fills the center column. The `hidden` attribute removes
+   the inactive panels from layout entirely. */
+.tabPanel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Right column — static, project-scoped chatbot. Sized to match the
+   original floating panel's width so the chat doesn't feel squished. */
+.chatColumn {
+  width: 380px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border, #e5e7eb);
+  background: var(--card, #ffffff);
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Placeholder for stub tabs that haven't been implemented yet. */
+.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  color: var(--muted, #6b7280);
+  font-size: 14px;
+  padding: 32px;
+}
+
+/* Tablet: drop the chat column width and shrink the sidebar. */
+@media (max-width: 1100px) {
+  .chatColumn {
+    width: 320px;
+  }
+  .sidebar {
+    width: 180px;
+  }
+}
+
+/* Mobile: panel goes full-bleed, columns stack vertically — sidebar
+   as a top scroll bar, center fills, chat sits below with a fixed
+   height so it stays visible without dominating the viewport. */
+@media (max-width: 768px) {
+  .overlay {
+    padding: 0;
+  }
+  .panel {
+    max-width: 100vw;
+    width: 100vw;
+    height: 100vh;
+    max-height: 100vh;
+    border-radius: 0;
+  }
+  .headerTitle {
+    max-width: 240px;
+  }
+  .body {
+    flex-direction: column;
+    overflow-y: auto;
+  }
+  .sidebar {
+    width: 100%;
+    flex-direction: row;
+    border-right: none;
+    border-bottom: 1px solid var(--border, #e5e7eb);
+    padding: 8px 12px;
+    overflow-x: auto;
+  }
+  .tabBtn {
+    width: auto;
+    border-left: none;
+    border-bottom: 3px solid transparent;
+  }
+  .tabBtnActive {
+    border-left: none;
+    border-bottom: 3px solid var(--accent, #e8365d);
+    padding-left: 12px;
+  }
+  .center {
+    flex: 0 0 auto;
+    min-height: 50vh;
+  }
+  .chatColumn {
+    width: 100%;
+    flex-shrink: 0;
+    height: 360px;
+    border-left: none;
+    border-top: 1px solid var(--border, #e5e7eb);
+  }
+}

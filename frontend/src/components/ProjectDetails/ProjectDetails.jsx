@@ -1,65 +1,17 @@
-import React, { useState } from 'react'
-import { CircleDot, Check, RotateCcw } from 'lucide-react'
+import React, { useState, useEffect } from 'react'
+import { FolderOpen, Loader2, FileText, ExternalLink } from 'lucide-react'
+import { fileAPI } from '../../api/auth'
 import styles from './ProjectDetails.module.css'
 
-// Static sample data — in-memory only, no backend integration.
-const INITIAL_PROJECTS = [
-  {
-    id: 1,
-    name: 'AI Customer Portal',
-    description:
-      'Self-service portal where customers can submit tickets, track deliveries, and manage subscriptions using natural language.',
-    startDate: '2026-06-15',
-    endDate: '2026-09-30',
-    status: 'running',
-    owner: 'Manoj Yadav',
-    progress: 62,
-  },
-  {
-    id: 2,
-    name: 'Mobile App v2',
-    description:
-      'Full rewrite of the consumer mobile app in React Native with offline-first sync, biometric login, and dark mode.',
-    startDate: '2026-04-01',
-    endDate: '2026-08-15',
-    status: 'on-hold',
-    owner: 'Priya Sharma',
-    progress: 38,
-  },
-  {
-    id: 3,
-    name: 'Data Warehouse Migration',
-    description:
-      'Move analytics workloads from legacy on-prem SQL Server to a cloud-native Snowflake + dbt pipeline.',
-    startDate: '2026-02-10',
-    endDate: '2026-07-05',
-    status: 'complete',
-    owner: 'Arjun Mehta',
-    progress: 100,
-  },
-  {
-    id: 4,
-    name: 'Brand Refresh',
-    description:
-      'New visual identity, marketing site redesign, and updated component library across all customer-facing apps.',
-    startDate: '2026-07-20',
-    endDate: '2026-11-10',
-    status: 'running',
-    owner: 'Neha Verma',
-    progress: 12,
-  },
-]
-
-const STATUS_OPTIONS = [
-  { value: 'running', label: 'Running', icon: CircleDot },
-  { value: 'on-hold', label: 'On Hold', icon: CircleDot },
-  { value: 'complete', label: 'Complete', icon: Check },
-]
-
+// Map FileUpload.status (pending | processing | completed | failed) to
+// the visual status used by the project card. The card treats anything
+// that isn't completed as "running" so the UI matches the prior design
+// while still reflecting real backend state.
 const STATUS_META = {
-  running: { label: 'Running', pillClass: 'pillRunning' },
-  'on-hold': { label: 'On Hold', pillClass: 'pillOnHold' },
-  complete: { label: 'Complete', pillClass: 'pillComplete' },
+  completed: { label: 'Complete', pillClass: 'pillComplete', fillClass: 'fill_complete', progress: 100 },
+  processing: { label: 'Running', pillClass: 'pillRunning', fillClass: 'fill_running', progress: 50 },
+  pending: { label: 'Running', pillClass: 'pillRunning', fillClass: 'fill_running', progress: 10 },
+  failed: { label: 'On Hold', pillClass: 'pillOnHold', fillClass: 'fill_on-hold', progress: 0 },
 }
 
 function formatDate(iso) {
@@ -71,66 +23,161 @@ function formatDate(iso) {
   })
 }
 
-function daysBetween(startIso, endIso) {
-  if (!startIso || !endIso) return null
-  const diff = Math.round((new Date(endIso) - new Date(startIso)) / (1000 * 60 * 60 * 24))
-  return diff
+function pickSummary(upload) {
+  // Prefer the SOW text snippet if extracted; otherwise show the file
+  // name. The SOW text is the plain text the backend extracted from
+  // the PDF/DOCX, so the first ~140 chars make a decent one-liner.
+  if (upload.sow_text && upload.sow_text.trim()) {
+    const clean = upload.sow_text.replace(/\s+/g, ' ').trim()
+    return clean.length > 160 ? `${clean.slice(0, 160)}…` : clean
+  }
+  return `SOW uploaded as ${upload.file_name || 'document'}.`
 }
 
-export default function ProjectDetails() {
-  const [projects, setProjects] = useState(INITIAL_PROJECTS)
-  const [expandedId, setExpandedId] = useState(null)
-
-  const updateProject = (id, patch) => {
-    setProjects((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)))
+function pickProjectName(upload) {
+  // Once the webhook callback runs the upload row may carry a project
+  // name (set by the backend from the SOW or Google Sheet). Until then
+  // we fall back to the file name.
+  if (upload.processing_result && typeof upload.processing_result === 'object') {
+    const pr = upload.processing_result
+    if (pr.project_name) return pr.project_name
   }
-
-  const handleReset = () => {
-    setProjects(INITIAL_PROJECTS)
-    setExpandedId(null)
+  if (upload.project_name) return upload.project_name
+  if (upload.file_name) {
+    // Strip common SOW suffixes for a friendlier title.
+    return upload.file_name.replace(/\.(pdf|docx?|txt)$/i, '').replace(/[_-]+/g, ' ').trim() || upload.file_name
   }
+  return `Project #${upload.id}`
+}
+
+function pickOwner(upload) {
+  if (upload.processing_result && typeof upload.processing_result === 'object') {
+    if (upload.processing_result.owner) return upload.processing_result.owner
+  }
+  if (upload.user) {
+    const u = upload.user
+    if (u.first_name || u.last_name) {
+      return `${u.first_name || ''} ${u.last_name || ''}`.trim()
+    }
+    if (u.username) return u.username
+    if (u.email) return u.email.split('@')[0]
+  }
+  return 'You'
+}
+
+/**
+ * ProjectDetails
+ *
+ * Lists the user's real FileUpload rows as project cards. Clicking a
+ * card calls `onCardClick(uploadId)` so the parent (Welcome.jsx) can
+ * open the ProjectDetailModal for that project.
+ *
+ * Props:
+ *   - onCardClick(uploadId): optional — when provided, cards become
+ *     clickable and a "view details" hint is shown. When omitted, the
+ *     component renders a non-interactive list (still useful for the
+ *     "no projects yet" empty state on first login).
+ *   - refreshKey: optional number — increment to force a re-fetch.
+ */
+export default function ProjectDetails({ onCardClick, refreshKey }) {
+  const [uploads, setUploads] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+    fileAPI
+      .listUploads()
+      .then((res) => {
+        if (cancelled) return
+        // Backend returns the list in newest-first order, but normalize
+        // just in case.
+        const list = Array.isArray(res?.data) ? res.data : []
+        list.sort((a, b) => new Date(b.uploaded_at || 0) - new Date(a.uploaded_at || 0))
+        setUploads(list)
+      })
+      .catch((err) => {
+        if (cancelled) return
+        console.error('Failed to load projects:', err)
+        setError(err?.response?.data?.error || err.message || 'Failed to load projects')
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [refreshKey])
 
   return (
     <section className={styles.section}>
       <div className={styles.sectionHeader}>
         <div>
-          <h2>Project Details</h2>
-          <p>Track active work, timelines, and status across your portfolio</p>
+          <h2>Your Projects</h2>
+          <p>Click any project to open the workspace — chat, meetings, and the live sprint plan.</p>
         </div>
-        <button className={styles.resetBtn} onClick={handleReset} type="button">
-          <RotateCcw size={14} strokeWidth={2.2} />
-          <span>Reset</span>
-        </button>
       </div>
 
-      <div className={styles.grid}>
-        {projects.map((project) => {
-          const isExpanded = expandedId === project.id
-          const meta = STATUS_META[project.status] || STATUS_META.running
-          const duration = daysBetween(project.startDate, project.endDate)
+      {loading && (
+        <div className={styles.loadingState}>
+          <Loader2 size={20} className={styles.spin} />
+          <span>Loading projects…</span>
+        </div>
+      )}
 
-          return (
-            <article
-              key={project.id}
-              className={`${styles.card} ${isExpanded ? styles.cardExpanded : ''}`}
-            >
-              {/* Header — always visible */}
-              <header
-                className={styles.cardHeader}
-                onClick={() => setExpandedId(isExpanded ? null : project.id)}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault()
-                    setExpandedId(isExpanded ? null : project.id)
-                  }
-                }}
+      {!loading && error && (
+        <div className={styles.errorState}>
+          <p>Could not load your projects.</p>
+          <p className={styles.errorDetail}>{error}</p>
+        </div>
+      )}
+
+      {!loading && !error && uploads.length === 0 && (
+        <div className={styles.emptyState}>
+          <FileText size={28} />
+          <h3>No projects yet</h3>
+          <p>
+            Upload a SOW (Statement of Work) above and PM OS will turn it into a
+            complete execution-ready project plan. Your projects will appear here.
+          </p>
+        </div>
+      )}
+
+      {!loading && !error && uploads.length > 0 && (
+        <div className={styles.grid}>
+          {uploads.map((upload) => {
+            const meta = STATUS_META[upload.status] || STATUS_META.processing
+            const projectName = pickProjectName(upload)
+            const owner = pickOwner(upload)
+            const summary = pickSummary(upload)
+            const startDate = upload.uploaded_at
+            const endDate = upload.completed_at || null
+
+            return (
+              <article
+                key={upload.id}
+                className={`${styles.card} ${onCardClick ? styles.cardClickable : ''}`}
+                onClick={onCardClick ? () => onCardClick(upload.id) : undefined}
+                onKeyDown={
+                  onCardClick
+                    ? (e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          onCardClick(upload.id)
+                        }
+                      }
+                    : undefined
+                }
+                role={onCardClick ? 'button' : undefined}
+                tabIndex={onCardClick ? 0 : undefined}
+                aria-label={onCardClick ? `Open project ${projectName}` : undefined}
               >
                 <div className={styles.cardHeaderTop}>
                   <div className={styles.cardTitleBlock}>
-                    <h3 className={styles.cardTitle}>{project.name}</h3>
-                    <p className={styles.cardOwner}>Owner · {project.owner}</p>
+                    <h3 className={styles.cardTitle}>{projectName}</h3>
+                    <p className={styles.cardOwner}>Owner · {owner}</p>
                   </div>
                   <span className={`${styles.pill} ${styles[meta.pillClass]}`}>
                     <span className={styles.pillDot}></span>
@@ -138,19 +185,17 @@ export default function ProjectDetails() {
                   </span>
                 </div>
 
-                <p className={styles.cardSummary}>{project.description}</p>
+                <p className={styles.cardSummary}>{summary}</p>
 
                 <div className={styles.cardMeta}>
                   <div className={styles.metaItem}>
-                    <span className={styles.metaLabel}>Timeline</span>
-                    <span className={styles.metaValue}>
-                      {formatDate(project.startDate)} → {formatDate(project.endDate)}
-                    </span>
+                    <span className={styles.metaLabel}>Started</span>
+                    <span className={styles.metaValue}>{formatDate(startDate)}</span>
                   </div>
-                  {duration != null && (
+                  {endDate && (
                     <div className={styles.metaItem}>
-                      <span className={styles.metaLabel}>Duration</span>
-                      <span className={styles.metaValue}>{duration} days</span>
+                      <span className={styles.metaLabel}>Completed</span>
+                      <span className={styles.metaValue}>{formatDate(endDate)}</span>
                     </div>
                   )}
                 </div>
@@ -158,84 +203,38 @@ export default function ProjectDetails() {
                 <div className={styles.progressRow}>
                   <div className={styles.progressTrack}>
                     <div
-                      className={`${styles.progressFill} ${styles[`fill_${project.status}`]}`}
-                      style={{ width: `${project.progress}%` }}
+                      className={`${styles.progressFill} ${styles[meta.fillClass]}`}
+                      style={{ width: `${meta.progress}%` }}
                     ></div>
                   </div>
-                  <span className={styles.progressLabel}>{project.progress}%</span>
+                  <span className={styles.progressLabel}>{meta.progress}%</span>
                 </div>
 
                 <div className={styles.cardFooter}>
-                  <span className={styles.expandHint}>
-                    {isExpanded ? 'Hide details' : 'Edit details'}
-                  </span>
+                  {onCardClick ? (
+                    <span className={styles.expandHint}>Open workspace →</span>
+                  ) : (
+                    <span className={styles.expandHint}>No actions available</span>
+                  )}
+                  {upload.drive_folder_url && (
+                    <a
+                      href={upload.drive_folder_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={styles.driveLink}
+                      onClick={(e) => e.stopPropagation()}
+                      title="Open in Google Drive"
+                    >
+                      <FolderOpen size={12} /> Drive
+                      <ExternalLink size={10} />
+                    </a>
+                  )}
                 </div>
-              </header>
-
-              {/* Editable details — visible when expanded */}
-              {isExpanded && (
-                <div className={styles.cardBody}>
-                  <div className={styles.bodyGrid}>
-                    <label className={styles.field}>
-                      <span className={styles.fieldLabel}>Start date</span>
-                      <input
-                        type="date"
-                        className={styles.dateInput}
-                        value={project.startDate}
-                        onChange={(e) => updateProject(project.id, { startDate: e.target.value })}
-                      />
-                    </label>
-
-                    <label className={styles.field}>
-                      <span className={styles.fieldLabel}>End date</span>
-                      <input
-                        type="date"
-                        className={styles.dateInput}
-                        value={project.endDate}
-                        onChange={(e) => updateProject(project.id, { endDate: e.target.value })}
-                      />
-                    </label>
-
-                    <label className={styles.field}>
-                      <span className={styles.fieldLabel}>Status</span>
-                      <select
-                        className={`${styles.statusSelect} ${styles[`select_${project.status}`]}`}
-                        value={project.status}
-                        onChange={(e) => updateProject(project.id, { status: e.target.value })}
-                      >
-                        {STATUS_OPTIONS.map((opt) => (
-                          <option key={opt.value} value={opt.value}>
-                            {opt.label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-
-                    <label className={styles.field}>
-                      <span className={styles.fieldLabel}>Progress (%)</span>
-                      <input
-                        type="number"
-                        min="0"
-                        max="100"
-                        className={styles.dateInput}
-                        value={project.progress}
-                        onChange={(e) => {
-                          const n = Math.max(0, Math.min(100, Number(e.target.value) || 0))
-                          updateProject(project.id, { progress: n })
-                        }}
-                      />
-                    </label>
-                  </div>
-
-                  <p className={styles.bodyNote}>
-                    Changes are kept in memory only — refreshing the page restores the original values.
-                  </p>
-                </div>
-              )}
-            </article>
-          )
-        })}
-      </div>
+              </article>
+            )
+          })}
+        </div>
+      )}
     </section>
   )
 }

@@ -5,6 +5,7 @@ import { fileAPI } from '../api/auth'
 import useCsvExport from '../hooks/useCsvExport'
 import ExportButtons from '../components/ExportButtons'
 import FileUpload from '../components/FileUpload'
+import ProjectDetailModal from '../components/ProjectDetailModal'
 import {
   Plus,
   RefreshCw,
@@ -75,6 +76,11 @@ export default function ProjectsPage() {
   // the DELETE request is in flight so a double-click can't fire two
   // requests. Keyed by upload id.
   const [deletingIds, setDeletingIds] = useState(() => new Set())
+
+  // Project detail modal: null = closed, number = open with that
+  // FileUpload.id. Mirrors the pattern used on Welcome.jsx — clicking
+  // a card sets this; the modal at the bottom of the page reads it.
+  const [modalUploadId, setModalUploadId] = useState(null)
 
   // Tracks per-upload poll loops. Cleared on unmount.
   const pollersRef = useRef({})   // { [uploadId]: { active, timer } }
@@ -372,6 +378,7 @@ export default function ProjectsPage() {
               onRefresh={loadOnce}
               onDelete={handleDeleteUpload}
               isDeleting={deletingIds.has(upload.id)}
+              onCardClick={setModalUploadId}
               registerCardRef={(el) => {
                 if (el) cardRefsRef.current[upload.id] = el
                 else delete cardRefsRef.current[upload.id]
@@ -384,6 +391,14 @@ export default function ProjectsPage() {
       {showUploadModal && (
         <UploadModal onClose={handleCloseModal} onSuccess={handleUploadSuccess} />
       )}
+
+      {/* Project workspace modal — opens when a project card is clicked.
+          Mounted at the page root so its overlay covers the whole page. */}
+      <ProjectDetailModal
+        uploadId={modalUploadId}
+        isOpen={modalUploadId != null}
+        onClose={() => setModalUploadId(null)}
+      />
     </div>
   )
 }
@@ -391,13 +406,14 @@ export default function ProjectsPage() {
 // (useCsvExport + ExportButton used to live here. Both are now
 // imported from frontend/src/hooks/useCsvExport and
 // frontend/src/components/ExportButtons so the same code drives
-// the buttons on FileHistory, ProjectDetailPage, and ProjectsPage.)
+// the buttons on FileHistory, ProjectsPage, and inside the
+// ProjectDetailModal's Overview tab.)
 
 
 // ============================================================
 // ProjectCard — one upload as a card.
 // ============================================================
-function ProjectCard({ upload, ownerName, onRefresh, onDelete, isDeleting = false, registerCardRef }) {
+function ProjectCard({ upload, ownerName, onRefresh, onDelete, isDeleting = false, registerCardRef, onCardClick }) {
   const config = STATUS_CONFIG[upload.status] || { label: 'Unknown', color: '#6b7280', Icon: HelpCircle }
   const StatusIcon = config.Icon
   const FileIcon = FileIconFor[upload.file_type] || FileText
@@ -419,10 +435,35 @@ function ProjectCard({ upload, ownerName, onRefresh, onDelete, isDeleting = fals
   // parent — it re-fetches the full list when the export state changes.
   const { handleExport, handleCancel } = useCsvExport(upload.id, upload, onRefresh)
 
+  // Card click → open the project workspace modal. Guarded so that
+  // clicks on the Delete button, the quick-link chips (Drive / Doc /
+  // Sheet), or the Export row don't bubble up and open the modal —
+  // those have their own behavior (delete confirm / new-tab link /
+  // CSV export).
+  const handleCardClick = (e) => {
+    if (!onCardClick) return
+    if (e.target.closest(`.${styles.deleteBtn}`)) return
+    if (e.target.closest(`.${styles.quickLinkChip}`)) return
+    if (e.target.closest(`.${styles.exportRow}`)) return
+    onCardClick(upload.id)
+  }
+  const handleCardKeyDown = (e) => {
+    if (!onCardClick) return
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
+      onCardClick(upload.id)
+    }
+  }
+
   return (
     <div
       ref={registerCardRef}
       className={`${styles.card} ${styles.projectCard} ${styles[`status_${upload.status}`] || ''}`}
+      role={onCardClick ? 'button' : undefined}
+      tabIndex={onCardClick ? 0 : undefined}
+      aria-label={onCardClick ? `Open project ${upload.file_name}` : undefined}
+      onClick={onCardClick ? handleCardClick : undefined}
+      onKeyDown={onCardClick ? handleCardKeyDown : undefined}
     >
       <div className={styles.cardTopRow}>
         <div className={styles.fileIcon}>

@@ -27,8 +27,8 @@ import { fileAPI } from '../api/auth'
  *     csv_<type>_status fields)
  *   - onUpdated: async fn to refresh the upload row after a successful
  *     export. Called once after the API call returns. The caller passes
- *     the parent's refresh fn (onRefresh in FileHistory, refreshUpload
- *     in ProjectDetailPage, loadOnce in ProjectsPage).
+ *     the parent's refresh fn (onRefresh in FileHistory, loadOnce in
+ *     ProjectsPage — the ProjectDetailModal calls these directly).
  */
 export default function useCsvExport(uploadId, upload, onUpdated) {
   const [exportingType, setExportingType] = useState(null)

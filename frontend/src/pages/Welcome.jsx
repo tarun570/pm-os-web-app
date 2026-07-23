@@ -6,6 +6,7 @@ import Sidebar from '../components/Sidebar'
 import FileUpload from '../components/FileUpload'
 import FileHistory from '../components/FileHistory'
 import ProjectDetails from '../components/ProjectDetails/ProjectDetails'
+import ProjectDetailModal from '../components/ProjectDetailModal'
 import Chatbot from '../components/Chatbot'
 import Integrations from '../components/Integrations'
 import {
@@ -63,6 +64,11 @@ export default function Welcome() {
   const [gdriveToast, setGdriveToast] = useState(null)
   const [gdriveBusy, setGdriveBusy] = useState(false)
   const [activeId, setActiveId] = useState('overview')
+  // Project detail modal: null = closed, number = open with that
+  // FileUpload.id. The modal is a self-contained workspace that lives
+  // on top of the dashboard; opening it doesn't change the underlying
+  // section scroll or sidebar state.
+  const [modalUploadId, setModalUploadId] = useState(null)
   const mainRef = useRef(null)
 
   // Section refs for the IntersectionObserver that powers the active
@@ -328,7 +334,7 @@ export default function Welcome() {
           ref={projectsRef}
           className={`${styles.section} ${styles.projectsSection}`}
         >
-          <ProjectDetails />
+          <ProjectDetails onCardClick={setModalUploadId} />
         </section>
 
         {/* ===== Upload SOW =====
@@ -544,8 +550,18 @@ export default function Welcome() {
         </footer>
       </main>
 
-      {/* Help / AI Assistant — floating bubble + panel. */}
-      <Chatbot />
+      {/* Help / AI Assistant — floating bubble + panel.
+          Hidden when the project modal is open so the two chat surfaces
+          don't stack on top of each other. */}
+      {!modalUploadId && <Chatbot />}
+
+      {/* Project workspace modal — opens when a project card is clicked.
+          Mounted at the root so its overlay covers the whole page. */}
+      <ProjectDetailModal
+        uploadId={modalUploadId}
+        isOpen={modalUploadId != null}
+        onClose={() => setModalUploadId(null)}
+      />
     </div>
   )
 }
