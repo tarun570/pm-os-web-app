@@ -147,6 +147,19 @@ class FileUpload(models.Model):
     # (extraction failed, unsupported type, or row predates this column).
     sow_text = models.TextField(null=True, blank=True)
 
+    # User-controlled project dates. Distinct from the system timestamps
+    # above (`uploaded_at` / `processing_started_at` / `completed_at`):
+    # these represent the PM's view of "when does this project start /
+    # end" and are NOT modified by the n8n pipeline or by
+    # `resync_sheet_plan` (which only rewrites `SprintPlanRow` rows).
+    # Seeded on first open of the Overview tab from
+    # MIN(sprint_plan_rows.start_date) / MAX(sprint_plan_rows.end_date),
+    # then editable by the user via
+    # POST /uploads/{id}/update_project_dates/. Nullable so existing
+    # rows (and rows whose sheet has no dates yet) keep working.
+    project_start_date = models.DateField(null=True, blank=True)
+    project_end_date = models.DateField(null=True, blank=True)
+
     class Meta:
         ordering = ['-uploaded_at']
 

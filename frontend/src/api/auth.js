@@ -155,6 +155,15 @@ export const fileAPI = {
 
   getResources: (uploadId, params = {}) =>
     api.get(`/uploads/${uploadId}/resources/`, { params }),
+
+  // User-editable project start/end dates. Distinct from the system
+  // timestamps in GET /uploads/{id}/ — these are PM-controlled and
+  // persist across resync_sheet_plan. Both fields are optional and
+  // nullable; pass null (not undefined) to clear a field.
+  // Payload shape: { start_date: 'YYYY-MM-DD' | null,
+  //                  end_date:   'YYYY-MM-DD' | null }
+  updateProjectDates: (uploadId, payload) =>
+    api.post(`/uploads/${uploadId}/update_project_dates/`, payload),
 }
 
 // =========================================================================

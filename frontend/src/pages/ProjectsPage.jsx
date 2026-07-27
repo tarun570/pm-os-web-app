@@ -1,11 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { fileAPI } from '../api/auth'
 import useCsvExport from '../hooks/useCsvExport'
 import ExportButtons from '../components/ExportButtons'
 import FileUpload from '../components/FileUpload'
-import ProjectDetailModal from '../components/ProjectDetailModal'
 import {
   Plus,
   RefreshCw,
@@ -68,6 +67,7 @@ function formatFileSize(bytes) {
 export default function ProjectsPage() {
   const { user } = useAuth()
   const location = useLocation()
+  const navigate = useNavigate()
   const [uploads, setUploads] = useState([])
   const [loading, setLoading] = useState(true)
   const [showUploadModal, setShowUploadModal] = useState(false)
@@ -77,10 +77,14 @@ export default function ProjectsPage() {
   // requests. Keyed by upload id.
   const [deletingIds, setDeletingIds] = useState(() => new Set())
 
-  // Project detail modal: null = closed, number = open with that
-  // FileUpload.id. Mirrors the pattern used on Welcome.jsx — clicking
-  // a card sets this; the modal at the bottom of the page reads it.
-  const [modalUploadId, setModalUploadId] = useState(null)
+  // Project card click → navigate to the project route. ProjectPage
+  // (mounted by the router at /projects/:id) takes care of fetching
+  // and rendering the project's content. The legacy ProjectDetailModal
+  // popup is no longer used; clicking a card simply changes the URL.
+  const goToProject = useCallback(
+    (id) => navigate(`/projects/${id}/overview`),
+    [navigate],
+  )
 
   // Tracks per-upload poll loops. Cleared on unmount.
   const pollersRef = useRef({})   // { [uploadId]: { active, timer } }
@@ -378,7 +382,7 @@ export default function ProjectsPage() {
               onRefresh={loadOnce}
               onDelete={handleDeleteUpload}
               isDeleting={deletingIds.has(upload.id)}
-              onCardClick={setModalUploadId}
+              onCardClick={goToProject}
               registerCardRef={(el) => {
                 if (el) cardRefsRef.current[upload.id] = el
                 else delete cardRefsRef.current[upload.id]
@@ -391,14 +395,6 @@ export default function ProjectsPage() {
       {showUploadModal && (
         <UploadModal onClose={handleCloseModal} onSuccess={handleUploadSuccess} />
       )}
-
-      {/* Project workspace modal — opens when a project card is clicked.
-          Mounted at the page root so its overlay covers the whole page. */}
-      <ProjectDetailModal
-        uploadId={modalUploadId}
-        isOpen={modalUploadId != null}
-        onClose={() => setModalUploadId(null)}
-      />
     </div>
   )
 }

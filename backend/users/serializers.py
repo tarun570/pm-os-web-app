@@ -120,6 +120,7 @@ class FileUploadSerializer(serializers.ModelSerializer):
             'uploaded_at', 'processing_started_at', 'completed_at',
             'original_file',
             'sow_text',
+            'project_start_date', 'project_end_date',
         )
         read_only_fields = (
             'id', 'status', 'processing_result', 'prd_document',
@@ -130,6 +131,7 @@ class FileUploadSerializer(serializers.ModelSerializer):
             'csv_jira_url', 'csv_trello_url',
             'uploaded_at', 'processing_started_at', 'completed_at',
             'sow_text',
+            'project_start_date', 'project_end_date',
         )
 
 

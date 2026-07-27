@@ -1,31 +1,48 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useLocation, useMatch } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
+import { fileAPI } from '../../api/auth'
 import {
   LayoutDashboard,
   Upload,
-  Files,
   Folder,
-  UserCircle2,
-  Plug,
   ListChecks,
   LogOut,
   Menu,
   X,
+  ChevronLeft,
 } from 'lucide-react'
 import styles from './Sidebar.module.css'
 
-// Nav items. `id` matches the section's DOM id on the Welcome page so
-// we can smooth-scroll to it and observe it for the active highlight.
+// Top-level nav. `id` is the active-highlight key; `to` is the real
+// React Router path. `match` is an array of pathname prefixes that
+// should mark this item as active (so `/projects` AND `/projects/:id`
+// both light up the "Project Details" item).
 const NAV_ITEMS = [
-  { id: 'overview', label: 'Overview', icon: LayoutDashboard },
-  { id: 'upload', label: 'Add New Project', icon: Upload },
-  { id: 'projects', label: 'Project Details', icon: ListChecks },
-  // { id: 'files', label: 'Files', icon: Files },
-  { id: 'drive', label: 'Google Drive', icon: Folder },
-  // { id: 'integrations', label: 'Integrations', icon: Plug },
-  // { id: 'account', label: 'Your Account', icon: UserCircle2 },
+  { id: 'overview', label: 'Overview',         to: '/overview', Icon: LayoutDashboard, match: ['/overview'] },
+  { id: 'upload',   label: 'Add New Project',  to: '/projects', Icon: Upload,         match: [] }, // No dedicated route; lands on the project list which has its own Add button.
+  { id: 'projects', label: 'Project Details',  to: '/projects', Icon: ListChecks,     match: ['/projects'] },
+  { id: 'drive',    label: 'Google Drive',     to: '/drive',    Icon: Folder,         match: ['/drive'] },
 ]
+
+// Nested project sub-nav. Each child is a <Link> to /projects/:uploadId/<section>.
+const PROJECT_SUB_ITEMS = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'meetings', label: 'Meetings' },
+  { id: 'sprint',   label: 'Sprint Plan' },
+]
+
+// Derive the active top-level id from the current pathname. First match
+// in NAV_ITEMS wins, so the more-specific entries (e.g. /projects)
+// shadow the more-general ones.
+function activeTopLevelId(pathname) {
+  for (const item of NAV_ITEMS) {
+    if (item.match.some((p) => pathname === p || pathname.startsWith(p + '/'))) {
+      return item.id
+    }
+  }
+  return 'overview'
+}
 
 function getInitials(user) {
   if (!user) return '?'
@@ -37,36 +54,58 @@ function getInitials(user) {
   return name.slice(0, 2).toUpperCase()
 }
 
-export default function Sidebar({ activeId, onNavigate }) {
+export default function Sidebar() {
   const { user, logout } = useAuth()
-  const navigate = useNavigate()
+  const location = useLocation()
   const [isLoggingOut, setIsLoggingOut] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
 
-  // Close the mobile sheet when the active section changes (i.e. user
-  // tapped a link).
+  // useMatch lets us read the :uploadId param AND the trailing section
+  // from the URL in a single hook, without needing useParams() (which
+  // would not work in this position relative to <Routes>).
+  const projectMatch = useMatch('/projects/:uploadId/*')
+  const activeProjectId = projectMatch?.params?.uploadId
+    ? Number(projectMatch.params.uploadId)
+    : null
+  const activeProjectSection = projectMatch?.pathname?.endsWith('/meetings')
+    ? 'meetings'
+    : projectMatch?.pathname?.endsWith('/sprint')
+    ? 'sprint'
+    : projectMatch
+    ? 'overview'
+    : null
+
+  // Project name — fetched lazily when a project is open. Silent fail
+  // falls back to "Project #<id>".
+  const [projectName, setProjectName] = useState('')
+  useEffect(() => {
+    if (!activeProjectId) {
+      setProjectName('')
+      return undefined
+    }
+    let cancelled = false
+    fileAPI
+      .getUpload(activeProjectId)
+      .then((res) => {
+        if (!cancelled) setProjectName(res?.data?.file_name || '')
+      })
+      .catch(() => {
+        if (!cancelled) setProjectName('')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [activeProjectId])
+
+  // Close the mobile sheet on every navigation.
   useEffect(() => {
     setMobileOpen(false)
-  }, [activeId])
-
-  const handleNavClick = (e, id) => {
-    e.preventDefault()
-    const el = document.getElementById(id)
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      // Update the URL hash without a hard navigation.
-      if (typeof history !== 'undefined' && history.replaceState) {
-        history.replaceState(null, '', `#${id}`)
-      }
-    }
-    if (onNavigate) onNavigate(id)
-  }
+  }, [location.pathname])
 
   const handleLogout = async () => {
     setIsLoggingOut(true)
     try {
       await logout()
-      navigate('/login')
     } catch (err) {
       console.error('Logout failed:', err)
     } finally {
@@ -79,6 +118,8 @@ export default function Sidebar({ activeId, onNavigate }) {
       user.username ||
       user.email
     : 'Guest'
+
+  const topLevelActiveId = activeTopLevelId(location.pathname)
 
   return (
     <>
@@ -113,24 +154,66 @@ export default function Sidebar({ activeId, onNavigate }) {
           </div>
         </div>
 
-        <nav className={styles.nav}>
+        <nav className={styles.nav} aria-label="Primary">
           {NAV_ITEMS.map((item) => {
-            const Icon = item.icon
-            const isActive = activeId === item.id
+            const Icon = item.Icon
+            const isActive = topLevelActiveId === item.id
             return (
-              <a
+              <Link
                 key={item.id}
-                href={`#${item.id}`}
-                onClick={(e) => handleNavClick(e, item.id)}
+                to={item.to}
                 className={`${styles.navItem} ${isActive ? styles.navItemActive : ''}`}
                 title={item.label}
               >
                 <Icon size={18} strokeWidth={isActive ? 2.4 : 2} />
                 <span className={styles.navLabel}>{item.label}</span>
                 {isActive && <span className={styles.activeBar} aria-hidden="true" />}
-              </a>
+              </Link>
             )
           })}
+
+          {/* Nested project sub-nav — only when a project route is active. */}
+          {activeProjectId != null && (
+            <div className={styles.projectBlock}>
+              <Link
+                to="/projects"
+                className={styles.backLink}
+                title="Back to all projects"
+              >
+                <ChevronLeft size={13} />
+                <span>All projects</span>
+              </Link>
+
+              <div
+                className={`${styles.projectParent} ${
+                  activeProjectSection ? styles.projectParentActive : ''
+                }`}
+                title={projectName || `Project #${activeProjectId}`}
+              >
+                <ListChecks size={13} className={styles.projectParentIcon} />
+                <span className={styles.projectParentLabel}>
+                  {projectName || `Project #${activeProjectId}`}
+                </span>
+              </div>
+
+              <div className={styles.subList} role="group" aria-label="Project sections">
+                {PROJECT_SUB_ITEMS.map((sub) => {
+                  const isActive = activeProjectSection === sub.id
+                  return (
+                    <Link
+                      key={sub.id}
+                      to={`/projects/${activeProjectId}/${sub.id}`}
+                      className={`${styles.subItem} ${isActive ? styles.subItemActive : ''}`}
+                      title={sub.label}
+                    >
+                      <span className={styles.subDot} aria-hidden="true" />
+                      <span className={styles.subLabel}>{sub.label}</span>
+                    </Link>
+                  )
+                })}
+              </div>
+            </div>
+          )}
         </nav>
 
         <div className={styles.userCard}>

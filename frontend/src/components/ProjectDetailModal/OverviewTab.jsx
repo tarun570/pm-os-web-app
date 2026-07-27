@@ -18,17 +18,6 @@ import ExportButtons from '../ExportButtons'
 import useCsvExport from '../../hooks/useCsvExport'
 import styles from './OverviewTab.module.css'
 
-function formatDate(iso) {
-  if (!iso) return '—'
-  return new Date(iso).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  })
-}
-
 function pickProjectName(upload) {
   if (!upload) return 'Project'
   if (upload.processing_result && typeof upload.processing_result === 'object') {
@@ -76,6 +65,18 @@ export default function OverviewTab({ uploadId, upload: initialUpload }) {
   const [upload, setUpload] = useState(initialUpload || null)
   const [refreshing, setRefreshing] = useState(false)
 
+  // Sync local state when the parent (e.g. ProjectPage) finishes its
+  // own fetch and passes the resolved upload down as a prop. The
+  // useState initializer above only runs at mount, so without this
+  // effect the tab would be stuck on `null` (and showing the loading
+  // placeholder) whenever the parent fetches asynchronously and the
+  // prop arrives after first render.
+  useEffect(() => {
+    if (initialUpload && initialUpload !== upload) {
+      setUpload(initialUpload)
+    }
+  }, [initialUpload, upload])
+
   // PRD preview (best-effort — not all projects have one).
   const [prd, setPrd] = useState(null)
   const [prdLoading, setPrdLoading] = useState(false)
@@ -93,6 +94,21 @@ export default function OverviewTab({ uploadId, upload: initialUpload }) {
     setToast({ message, type })
     setTimeout(() => setToast(null), 4000)
   }, [])
+
+  // --- Project start/end dates ----------------------------------------
+  // `sheetStartDate` / `sheetEndDate` are derived from sprint_plan_rows
+  // (MIN / MAX) on mount and used only as the *initial seed* if the
+  // user has never saved a value. `editStart` / `editEnd` are the live
+  // input values (always editable; "Save" persists). `hasUserEdited` is
+  // the override-survives-resync signal: once true, we never re-derive
+  // from the sheet on re-mount.
+  const [sheetStartDate, setSheetStartDate] = useState(null)
+  const [sheetEndDate, setSheetEndDate] = useState(null)
+  const [editStart, setEditStart] = useState('')
+  const [editEnd, setEditEnd] = useState('')
+  const [hasUserEdited, setHasUserEdited] = useState(false)
+  const [savingDates, setSavingDates] = useState(false)
+  const [sprintPlanLoaded, setSprintPlanLoaded] = useState(false)
 
   // CSV export — reuses the existing useCsvExport hook from FileHistory.
   const refreshUpload = useCallback(async () => {
@@ -156,6 +172,62 @@ export default function OverviewTab({ uploadId, upload: initialUpload }) {
     }
   }, [uploadId])
 
+  // Fetch the sprint plan exactly once per mount and seed the Start /
+  // End date inputs. We deliberately do NOT depend on `upload` here:
+  // the sprint plan doesn't change while the modal is open, and
+  // re-running on every `upload` change would clobber the user's
+  // just-saved values if the parent's refreshUpload fires after a CSV
+  // export.
+  useEffect(() => {
+    if (!uploadId) return
+    let cancelled = false
+    setSprintPlanLoaded(false)
+    fileAPI
+      .getSprintPlan(uploadId)
+      .then((res) => {
+        if (cancelled) return
+        const rows = res?.data?.sprint_plan_rows || []
+        const starts = rows.map((r) => r.start_date).filter(Boolean)
+        const ends = rows.map((r) => r.end_date).filter(Boolean)
+        // MIN across non-null starts, MAX across non-null ends.
+        // ISO-8601 strings sort lexicographically the same as
+        // chronologically, so a plain reduce is correct here.
+        const minStart = starts.length
+          ? starts.reduce((a, b) => (a < b ? a : b))
+          : null
+        const maxEnd = ends.length
+          ? ends.reduce((a, b) => (a > b ? a : b))
+          : null
+        setSheetStartDate(minStart)
+        setSheetEndDate(maxEnd)
+
+        // Seed priority: server-stored override > sheet MIN/MAX > ''.
+        // Once the user saves once, `initialUpload.project_start_date`
+        // is non-null and the sheet values are never used again.
+        const savedStart = initialUpload?.project_start_date || null
+        const savedEnd = initialUpload?.project_end_date || null
+        setEditStart(savedStart || minStart || '')
+        setEditEnd(savedEnd || maxEnd || '')
+        setHasUserEdited(Boolean(savedStart || savedEnd))
+        setSprintPlanLoaded(true)
+      })
+      .catch((err) => {
+        if (cancelled) return
+        console.error('Failed to load sprint plan for project dates:', err)
+        // Fall back to whatever the parent already has on the upload
+        // row (likely empty on a not-yet-completed project).
+        setEditStart(initialUpload?.project_start_date || '')
+        setEditEnd(initialUpload?.project_end_date || '')
+        setHasUserEdited(
+          Boolean(initialUpload?.project_start_date || initialUpload?.project_end_date),
+        )
+        setSprintPlanLoaded(true)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [uploadId]) // intentionally NOT depending on initialUpload
+
   // "Generate weekly summary" — kicks off the mock pipeline, polls
   // the list, and surfaces the result as a toast + populates the
   // collapsible summary section.
@@ -198,6 +270,42 @@ export default function OverviewTab({ uploadId, upload: initialUpload }) {
       setGeneratingSummary(false)
     }
   }, [uploadId, generatingSummary, showToast])
+
+  // "Save" — PATCH the two dates to the backend. Empty strings become
+  // null (cleared). On success: replace the local upload state with
+  // the returned row, mark hasUserEdited, and toast.
+  const handleSaveDates = useCallback(async () => {
+    if (savingDates) return
+    setSavingDates(true)
+    try {
+      const toIsoOrNull = (v) => (v && v.length > 0 ? v : null)
+      const res = await fileAPI.updateProjectDates(uploadId, {
+        start_date: toIsoOrNull(editStart),
+        end_date: toIsoOrNull(editEnd),
+      })
+      if (res?.data) {
+        setUpload(res.data)
+        // Re-seed inputs from the server's canonical representation
+        // (e.g. if Django ever normalizes a malformed value).
+        setEditStart(res.data.project_start_date || '')
+        setEditEnd(res.data.project_end_date || '')
+      }
+      setHasUserEdited(true)
+      showToast('Project dates saved.', 'success')
+    } catch (err) {
+      const detail = err?.response?.data?.error || err.message
+      showToast(`Could not save dates: ${detail}`, 'error')
+    } finally {
+      setSavingDates(false)
+    }
+  }, [uploadId, editStart, editEnd, savingDates, showToast])
+
+  // "Cancel" — revert the inputs to the last saved value (whatever's
+  // on the `upload` state). Does not touch the backend.
+  const handleCancelDates = useCallback(() => {
+    setEditStart(upload?.project_start_date || '')
+    setEditEnd(upload?.project_end_date || '')
+  }, [upload])
 
   if (!upload) {
     return (
@@ -252,31 +360,62 @@ export default function OverviewTab({ uploadId, upload: initialUpload }) {
         <div className={styles.metaGrid}>
           <div className={styles.metaItem}>
             <span className={styles.metaLabel}>
-              <CalendarDays size={12} /> Uploaded
+              <CalendarDays size={12} /> Start date
             </span>
-            <span className={styles.metaValue}>{formatDate(upload.uploaded_at)}</span>
+            <input
+              type="date"
+              className={styles.dateInput}
+              value={editStart}
+              onChange={(e) => setEditStart(e.target.value)}
+              disabled={!sprintPlanLoaded}
+              aria-label="Project start date"
+            />
           </div>
-          {upload.processing_started_at && (
-            <div className={styles.metaItem}>
-              <span className={styles.metaLabel}>
-                <Loader2 size={12} /> Processing started
-              </span>
-              <span className={styles.metaValue}>{formatDate(upload.processing_started_at)}</span>
-            </div>
-          )}
-          {upload.completed_at && (
-            <div className={styles.metaItem}>
-              <span className={styles.metaLabel}>
-                <CheckCircle2 size={12} /> Completed
-              </span>
-              <span className={styles.metaValue}>{formatDate(upload.completed_at)}</span>
-            </div>
-          )}
           <div className={styles.metaItem}>
             <span className={styles.metaLabel}>
-              <FileText size={12} /> File type
+              <CalendarDays size={12} /> End date
             </span>
-            <span className={styles.metaValue}>{(upload.file_type || 'document').toUpperCase()}</span>
+            <input
+              type="date"
+              className={styles.dateInput}
+              value={editEnd}
+              min={editStart || undefined}
+              onChange={(e) => setEditEnd(e.target.value)}
+              disabled={!sprintPlanLoaded}
+              aria-label="Project end date"
+            />
+          </div>
+        </div>
+
+        <div className={styles.saveRow}>
+          {hasUserEdited && (
+            <span className={styles.savedHint}>
+              <CheckCircle2 size={11} /> Custom dates saved
+            </span>
+          )}
+          <div className={styles.saveRowButtons}>
+            <button
+              type="button"
+              className={styles.cancelBtn}
+              onClick={handleCancelDates}
+              disabled={savingDates}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className={styles.saveBtn}
+              onClick={handleSaveDates}
+              disabled={savingDates}
+            >
+              {savingDates ? (
+                <>
+                  <Loader2 size={12} className={styles.spin} /> Saving…
+                </>
+              ) : (
+                'Save'
+              )}
+            </button>
           </div>
         </div>
       </section>

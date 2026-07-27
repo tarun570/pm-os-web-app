@@ -1,0 +1,55 @@
+/* DrivePage — matches the page wrapper + header style used by
+   OverviewPage / ProjectsPage so the new /drive route feels native. */
+
+.page {
+  padding: 56px 60px 40px;
+  max-width: 1200px;
+  width: 100%;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+@media (max-width: 1024px) {
+  .page { padding: 40px 24px 32px; }
+}
+
+@media (max-width: 640px) {
+  .page { padding: 28px 16px 24px; }
+}
+
+.header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.header h1 {
+  font-size: clamp(28px, 4vw, 40px);
+  margin-bottom: 6px;
+  color: var(--text);
+}
+
+.lead {
+  font-size: 15px;
+  color: var(--muted);
+  max-width: 560px;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.headerIcon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  color: white;
+  box-shadow: 0 6px 18px rgba(232, 54, 93, 0.22);
+  flex-shrink: 0;
+}

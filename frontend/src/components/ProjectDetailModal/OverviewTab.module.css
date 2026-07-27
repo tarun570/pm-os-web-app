@@ -171,6 +171,114 @@
   color: var(--text);
 }
 
+/* Editable date input inside the meta grid. Matches the .metaValue
+   typography but with a native date-picker affordance and a focus
+   ring aligned with the rest of the modal's accent palette. */
+.dateInput {
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  width: 100%;
+  max-width: 180px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.dateInput:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(232, 54, 93, 0.12);
+}
+
+.dateInput:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Save / Cancel row beneath the meta grid. */
+.saveRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.saveRowButtons {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.savedHint {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #00875a;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+.saveBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  color: white;
+  border: none;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s, opacity 0.15s;
+}
+
+.saveBtn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(232, 54, 93, 0.3);
+}
+
+.saveBtn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.saveBtn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.cancelBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 8px;
+  background: white;
+  border: 1.5px solid var(--border);
+  color: var(--text2);
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.cancelBtn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.cancelBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 /* External link buttons row. */
 .linksRow {
   display: flex;
@@ -368,5 +476,12 @@
   }
   .generateBtn {
     align-self: flex-start;
+  }
+  .saveRow {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .saveRowButtons {
+    margin-left: 0;
   }
 }
