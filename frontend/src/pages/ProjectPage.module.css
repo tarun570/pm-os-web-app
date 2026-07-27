@@ -1,0 +1,141 @@
+/* ProjectPage — sits inside AppLayout's <main> column. A small header
+   on top of the routed section content. */
+
+.page {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: transparent;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 32px 16px;
+  border-bottom: 1px solid var(--border, #e5e7eb);
+  background: white;
+  flex-shrink: 0;
+}
+
+.backLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  color: var(--text2, #4b5563);
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid transparent;
+  transition: all 0.15s;
+}
+
+.backLink:hover {
+  background: var(--surface, #f8f9fc);
+  border-color: var(--border, #e5e7eb);
+  color: var(--text, #111827);
+}
+
+.titleBlock {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text, #111827);
+  margin: 0;
+  letter-spacing: -0.3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 480px;
+}
+
+.statusPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 100px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  background: rgba(99, 102, 241, 0.12);
+  color: #4338ca;
+}
+
+.status_completed {
+  background: rgba(0, 168, 107, 0.12);
+  color: #00875a;
+}
+.status_processing {
+  background: rgba(99, 102, 241, 0.12);
+  color: #4338ca;
+}
+.status_pending {
+  background: rgba(245, 158, 11, 0.14);
+  color: #b45309;
+}
+.status_failed {
+  background: rgba(239, 68, 68, 0.12);
+  color: #b91c1c;
+}
+
+.driveLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: var(--surface, #f8f9fc);
+  border: 1px solid var(--border, #e5e7eb);
+  color: var(--text2, #4b5563);
+  text-decoration: none;
+  font-size: 12.5px;
+  font-weight: 600;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.driveLink:hover {
+  border-color: var(--accent, #e8365d);
+  color: var(--accent, #e8365d);
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--surface, #f8f9fc);
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.spin {
+  animation: spin 0.9s linear infinite;
+}
+
+@media (max-width: 768px) {
+  .header {
+    flex-wrap: wrap;
+    padding: 14px 16px 12px;
+  }
+  .title {
+    max-width: 200px;
+  }
+  .driveLink span {
+    display: none;
+  }
+}

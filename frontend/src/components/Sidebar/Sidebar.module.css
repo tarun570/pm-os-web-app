@@ -117,6 +117,148 @@
   background: linear-gradient(180deg, var(--accent), var(--accent2));
 }
 
+/* ---- Nested project sub-nav ---- */
+
+/* Block sits at the bottom of the top-level nav, separated by a
+   subtle top border. Spans the full width of the sidebar's padded
+   inner area. */
+.projectBlock {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* "← All projects" — small, muted, sits at the top of the block. */
+.backLink {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  margin: 0 0 4px;
+  border-radius: 6px;
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 11.5px;
+  font-weight: 500;
+  transition: color 0.15s, background-color 0.15s;
+}
+
+.backLink:hover {
+  color: var(--text);
+  background: var(--surface);
+}
+
+/* "Project: <name>" parent label. Not a link — just a header for the
+   three child links beneath it. Slightly stronger than the back link. */
+.projectParent {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1px;
+  text-transform: none;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.projectParentIcon {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+.projectParentLabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Soft parent-active highlight — used when any child section is
+   active. Lighter than .navItemActive so the actual child still
+   reads as the primary selection. */
+.projectParentActive {
+  background: rgba(232, 54, 93, 0.05);
+  color: var(--accent);
+}
+
+.projectParentActive .projectParentIcon {
+  color: var(--accent);
+}
+
+/* Container for the three sub-links. Indented further from the
+   parent so the visual hierarchy is clear. */
+.subList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-left: 14px;
+  padding-left: 10px;
+  border-left: 1px solid var(--border);
+}
+
+.subItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  color: var(--text2);
+  text-decoration: none;
+  font-size: 12.5px;
+  font-weight: 500;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.subItem:hover {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.subDot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--border);
+  flex-shrink: 0;
+  transition: background-color 0.15s;
+}
+
+.subItem:hover .subDot {
+  background: var(--text2);
+}
+
+.subLabel {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Strong active state on the matching child — same look as the
+   top-level active item, just slightly less prominent because it's
+   nested. */
+.subItemActive {
+  background: linear-gradient(135deg, rgba(232, 54, 93, 0.10), rgba(255, 77, 90, 0.06));
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.subItemActive:hover {
+  background: linear-gradient(135deg, rgba(232, 54, 93, 0.14), rgba(255, 77, 90, 0.10));
+  color: var(--accent);
+}
+
+.subItemActive .subDot {
+  background: var(--accent);
+}
+
 .userCard {
   display: flex;
   align-items: center;
@@ -232,7 +374,8 @@
   .brandText,
   .navLabel,
   .userInfo,
-  .activeBar {
+  .activeBar,
+  .projectBlock {
     display: none;
   }
 
@@ -277,7 +420,8 @@
   .brandText,
   .navLabel,
   .userInfo,
-  .activeBar {
+  .activeBar,
+  .projectBlock {
     display: flex;
   }
 

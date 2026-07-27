@@ -234,6 +234,36 @@ def process_sow_upload(self, upload_id):
                     print(f"{prefix}     ⚠️  PRD extract failed: {type(exc).__name__}: {exc}")
                     print(traceback.format_exc())
 
+                # Best-effort sheet→DB import on the sync path. The async
+                # path (webhook_callback) already calls
+                # populate_sprint_plan_from_sheet; mirroring it here means
+                # the UserStory / Resource / SprintPlanRow tables are
+                # populated whether n8n returned the result inline OR
+                # POSTed back to webhook_callback. Guarded by sheet_link
+                # because the importer raises if it's missing. Idempotent
+                # because populate_sprint_plan_from_sheet wipes-then-
+                # rewrites inside a single transaction.
+                try:
+                    from users.sheet_importer import (
+                        populate_sprint_plan_from_sheet,
+                        SheetImportError,
+                    )
+                    pr = file_upload.processing_result or {}
+                    if pr.get("sheet_link"):
+                        counts = populate_sprint_plan_from_sheet(file_upload)
+                        print(f"{prefix}     ✓ Sheet imported: {counts}")
+                    else:
+                        print(
+                            f"{prefix}     · No sheet_link in processing_result; "
+                            f"skipping sheet import (n8n didn't return a sheet)"
+                        )
+                except SheetImportError as exc:
+                    print(f"{prefix}     ⚠️  Sheet import skipped: {exc}")
+                except Exception as exc:
+                    import traceback
+                    print(f"{prefix}     ⚠️  Sheet import failed: {type(exc).__name__}: {exc}")
+                    print(traceback.format_exc())
+
                 workflow_id = normalized_response.get('workflow_id')
                 if workflow_id:
                     file_upload.n8n_workflow_id = workflow_id

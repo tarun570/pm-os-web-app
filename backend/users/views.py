@@ -10,7 +10,7 @@ from django.shortcuts import redirect
 from django.conf import settings
 from django.http import FileResponse, HttpResponse
 from django.utils import timezone
-from datetime import timedelta
+from datetime import timedelta, date as date_cls
 from google.auth.transport import requests
 from google.oauth2 import id_token
 import uuid
@@ -45,6 +45,14 @@ from users.serializers import (
 from users.text_extraction import extract_text
 
 User = get_user_model()
+
+
+# Sentinel used by `update_project_dates` (and any future PATCH-style
+# endpoint) to distinguish "field not in payload → don't touch" from
+# explicit `None` → "clear the value". Without this, `payload.get('x')`
+# collapses both cases into a single falsy value and we can never
+# tell the user's intent apart.
+_UNSET = object()
 
 
 class UserViewSet(viewsets.ModelViewSet):
@@ -745,12 +753,93 @@ class FileUploadViewSet(viewsets.ModelViewSet):
             status=status.HTTP_200_OK,
         )
 
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def update_project_dates(self, request, pk=None):
+        """POST /api/uploads/{id}/update_project_dates/
+
+        Update the user-editable project start/end dates. Distinct from
+        the system timestamps (`uploaded_at` / `processing_started_at` /
+        `completed_at`) — these represent the PM's view of the project's
+        calendar and are NOT touched by `webhook_callback` or
+        `resync_sheet_plan` (which only rewrites `SprintPlanRow` rows).
+
+        Body (both fields optional, both nullable):
+          {
+            "start_date": "2026-07-25" | null,
+            "end_date":   "2026-08-10" | null
+          }
+
+        Field absent from the body → leave the stored value alone.
+        Field present as `null` or `""` → clear the stored value.
+
+        Validation: each non-null value must be an ISO-8601 date string
+        (YYYY-MM-DD). If both are non-null, `end_date` must be >=
+        `start_date`. Invalid input returns 400 with a structured error.
+
+        Response (200): the updated FileUpload row serialized via
+        `FileUploadSerializer`.
+        """
+        try:
+            file_upload = self.get_queryset().get(pk=pk)
+        except FileUpload.DoesNotExist:
+            return Response({'error': 'Upload not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        start_raw = request.data.get('start_date', _UNSET)
+        end_raw = request.data.get('end_date', _UNSET)
+
+        new_start = file_upload.project_start_date
+        new_end = file_upload.project_end_date
+
+        for field_name, raw in (
+            ('project_start_date', start_raw),
+            ('project_end_date', end_raw),
+        ):
+            if raw is _UNSET:
+                continue
+            if raw in (None, ''):
+                setattr(file_upload, field_name, None)
+                continue
+            if not isinstance(raw, str):
+                return Response(
+                    {'error': f'{field_name} must be a string in YYYY-MM-DD format or null.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            try:
+                setattr(file_upload, field_name, date_cls.fromisoformat(raw))
+            except ValueError:
+                return Response(
+                    {'error': f'{field_name} is not a valid date. Expected YYYY-MM-DD, got {raw!r}.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        # Cross-field validation. Only enforced when both are non-null.
+        if file_upload.project_start_date and file_upload.project_end_date:
+            if file_upload.project_end_date < file_upload.project_start_date:
+                return Response(
+                    {'error': 'end_date must be on or after start_date.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        file_upload.save(update_fields=[
+            'project_start_date',
+            'project_end_date',
+            'updated_at',
+        ])
+
+        return Response(
+            FileUploadSerializer(file_upload).data,
+            status=status.HTTP_200_OK,
+        )
+
     @action(detail=True, methods=['get'], permission_classes=[IsAuthenticated])
     def user_stories(self, request, pk=None):
         """GET /api/uploads/{id}/user_stories/
 
-        Optional query params (all substring matches, case-insensitive):
-          ?project_name=AI%20Project
+        Optional query params:
+          ?project_name=AI%20Project   (icontains substring match)
+          ?us_id=US-3                  (exact match — preferred for the
+                                       chatbot so ?us_id=US doesn't
+                                       accidentally match US-10..19)
         """
         try:
             file_upload = self.get_queryset().get(pk=pk)
@@ -761,6 +850,12 @@ class FileUploadViewSet(viewsets.ModelViewSet):
         project_name = request.query_params.get('project_name')
         if project_name:
             qs = qs.filter(project_name__icontains=project_name)
+        # Exact match (not __icontains) so ?us_id=US returns nothing and
+        # ?us_id=US-3 doesn't return US-30, US-31, etc. The field is
+        # short and indexed; equality is the right lookup.
+        us_id = request.query_params.get('us_id')
+        if us_id:
+            qs = qs.filter(us_id=us_id)
         return Response(UserStorySerializer(qs, many=True).data)
 
     @action(detail=True, methods=['get'], permission_classes=[IsAuthenticated])

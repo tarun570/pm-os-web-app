@@ -120,6 +120,7 @@ class FileUploadSerializer(serializers.ModelSerializer):
             'uploaded_at', 'processing_started_at', 'completed_at',
             'original_file',
             'sow_text',
+            'project_start_date', 'project_end_date',
         )
         read_only_fields = (
             'id', 'status', 'processing_result', 'prd_document',
@@ -130,6 +131,7 @@ class FileUploadSerializer(serializers.ModelSerializer):
             'csv_jira_url', 'csv_trello_url',
             'uploaded_at', 'processing_started_at', 'completed_at',
             'sow_text',
+            'project_start_date', 'project_end_date',
         )
 
 
@@ -155,10 +157,12 @@ class UserStorySerializer(serializers.ModelSerializer):
     class Meta:
         model = UserStory
         fields = (
-            'id', 'project_name', 'user_story',
+            'id', 'project_name', 'user_story', 'us_id',
             'created_at', 'updated_at',
         )
-        read_only_fields = ('id', 'created_at', 'updated_at')
+        # us_id is populated exclusively by the importer — never by
+        # user POST/PATCH. read-only keeps the API contract honest.
+        read_only_fields = ('id', 'us_id', 'created_at', 'updated_at')
 
 
 class ResourceSerializer(serializers.ModelSerializer):
@@ -184,14 +188,20 @@ class SprintPlanRowSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'project_name',
             'user_story', 'user_story_detail',
+            'user_story_text',
             'us_id', 'task',
             'resources', 'resources_detail', 'resource_name',
             'start_date', 'end_date', 'est_hours',
             'sprint', 'priority', 'status',
             'created_at', 'updated_at',
         )
+        # user_story_text is defensive read-only — the importer is the
+        # only writer, and no view mutates SprintPlanRow today. Marking
+        # it read-only prevents accidental client mutation if a future
+        # endpoint starts accepting PATCH.
         read_only_fields = (
             'id', 'user_story_detail', 'resources_detail',
+            'user_story_text',
             'created_at', 'updated_at',
         )
 

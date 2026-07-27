@@ -1,0 +1,9 @@
+/* Container that the embedded Chatbot fills. No padding so the chat
+   panel can use the full tab area. */
+.container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  overflow: hidden;
+}
